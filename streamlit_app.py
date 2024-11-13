@@ -70,7 +70,15 @@ if st.button("Fetch Tickers and Check Buy Signals"):
     st.session_state.tickers = get_all_tickers()
     buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
     
-    st.write(f"Total tickers found: {len(st.session_state.tickers)}")
-    st.write("All Tickers:", st.session_state.tickers)
-    st.write("Tickers with Buy signal:", buy_tickers)
-    st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
+    # Two-column layout
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"Total tickers found: {len(st.session_state.tickers)}")
+        st.write("All Tickers:")
+        st.write(st.session_state.tickers)
+    
+    with col2:
+        st.write("Tickers with Buy signal:")
+        st.write(buy_tickers)
+        st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
