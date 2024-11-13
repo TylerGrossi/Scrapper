@@ -63,10 +63,11 @@ def check_buy_signal(tickers):
     return buy_signals, buy_percentage
 
 # Streamlit App Interface
-st.title("Ticker Buy Signal Checker")
+st.title("Stock Checker")
+st.subheader("Earnings this week, SMA20 crossed SMA50 above, Buy Signal")
 
 # Single button to fetch tickers and check buy signals
-if st.button("Fetch Tickers and Check Buy Signals"):
+if st.button("Find Stocks"):
     st.session_state.tickers = get_all_tickers()
     buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
     
