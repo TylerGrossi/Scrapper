@@ -7,11 +7,7 @@ import time
 if "tickers" not in st.session_state:
     st.session_state.tickers = []
 
-# Progress bar and time estimation display
-progress_bar = st.progress(0)
-time_display = st.empty()
-
-# Function to fetch tickers with estimated time
+# Function to fetch tickers from Finviz
 def get_all_tickers():
     base_url = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
     headers = {
@@ -19,39 +15,84 @@ def get_all_tickers():
     }
     offset = 0
     tickers = []
-    estimated_total_pages = 5  # Set an estimate for the number of pages to fetch
-    start_time = time.time()
 
-    for page in range(estimated_total_pages):
+    while True:
         url = f"{base_url}&r={offset + 1}"
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Process each row for tickers
+        new_tickers = []
+
+        # Locate rows containing tickers specifically
         for row in soup.select("table tr"):
             columns = row.find_all("td")
             if len(columns) > 1:
                 ticker = columns[1].text.strip()
                 if ticker.isupper() and ticker.isalpha() and len(ticker) <= 5:
-                    tickers.append(ticker)
-        
-        # Update progress and estimated time
-        elapsed = time.time() - start_time
-        avg_time_per_page = elapsed / (page + 1)
-        estimated_time_remaining = avg_time_per_page * (estimated_total_pages - (page + 1))
-        
-        progress = (page + 1) / estimated_total_pages
-        progress_bar.progress(progress)
-        time_display.text(f"Estimated time remaining: {estimated_time_remaining:.2f} seconds")
-        
-        offset += 20
-        time.sleep(0.5)  # Simulate processing time if needed
+                    new_tickers.append(ticker)
 
-    progress_bar.progress(1.0)  # Complete progress
+        # If no new tickers were found, we assume there are no more pages
+        if not new_tickers:
+            break
+
+        tickers.extend(ticker for ticker in new_tickers if ticker not in tickers)
+        offset += 20
+
     return tickers
 
+# Function to check Buy signals
+def check_buy_signal(tickers):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+    }
+    buy_signals = []
+
+    for ticker in tickers:
+        url = f"https://www.barchart.com/stocks/quotes/{ticker}/opinion"
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            buy_signal = soup.find('span', class_='opinion-signal buy')
+            if buy_signal and "Buy" in buy_signal.text:
+                buy_signals.append(ticker)
+        
+        except requests.exceptions.RequestException as e:
+            st.write(f"Error fetching page for {ticker}: {e}")
+
+    # Calculate the percentage of tickers with a Buy signal
+    buy_percentage = (len(buy_signals) / len(tickers)) * 100 if tickers else 0
+    return buy_signals, buy_percentage
+
+# Streamlit App Interface
+st.title("Ticker Buy Signal Checker")
+
+# Top row with title and estimated time
+header_col1, header_col2 = st.columns([3, 1])
+with header_col1:
+    st.header("Ticker Buy Signal Checker")
+with header_col2:
+    # Placeholder for estimated time
+    estimated_time = "Approximately 1-2 minutes"
+    st.write("Estimated time to complete:")
+    st.write(estimated_time)
+
 # Single button to fetch tickers and check buy signals
-if st.button("Fetch Tickers with Estimated Time"):
+if st.button("Fetch Tickers and Check Buy Signals"):
     st.session_state.tickers = get_all_tickers()
+    buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
+    
+    # Two-column layout for results
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"Total tickers found: {len(st.session_state.tickers)}")
+        st.write("All Tickers:")
+        st.write(st.session_state.tickers)
+    
+    with col2:
+        st.write("Tickers with Buy signal:")
+        st.write(buy_tickers)
+        st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
+
     st.write(f"Total tickers found: {len(st.session_state.tickers)}")
     st.write("All Tickers:", st.session_state.tickers)
