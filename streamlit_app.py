@@ -71,23 +71,7 @@ if st.button("Find Stocks"):
     st.session_state.tickers = get_all_tickers()
     buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
     
-    # Two-column layout
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write(f"Total tickers found: {len(st.session_state.tickers)}")
-        st.write("All Tickers:")
-        st.write(st.session_state.tickers)
-    
-    with col2:
-        st.write("Tickers with Buy signal:")
-        st.write(buy_tickers)
-        st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
-        
-        # Show buy tickers as a code block for easy copying
-        buy_tickers_text = ", ".join(buy_tickers)
-        st.code(buy_tickers_text, language='text')
-        
-        # Button to copy tickers to clipboard
-        if st.button("Copy Buy Tickers"):
-            st.write(f"{buy_tickers_text} copied to clipboard!")
+    # Only display tickers with Buy signal
+    st.write("Tickers with Buy signal:")
+    st.write(buy_tickers)
+    st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
