@@ -65,17 +65,21 @@ def check_buy_signal(tickers):
 # Streamlit App Interface
 st.title("Ticker Buy Signal Checker")
 
-# Button to fetch all tickers
-if st.button("Fetch Tickers"):
-    st.session_state.tickers = get_all_tickers()
-    st.write(f"Total tickers found: {len(st.session_state.tickers)}")
-    st.write("Tickers:", st.session_state.tickers)
+col1, col2 = st.columns(2)
 
-# Button to check buy signals
-if st.button("Check Buy Signals"):
-    if not st.session_state.tickers:
-        st.write("Please fetch tickers first.")
-    else:
-        buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
-        st.write("Tickers with Buy signal:", buy_tickers)
-        st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
+with col1:
+    # Button to fetch all tickers
+    if st.button("Fetch Tickers"):
+        st.session_state.tickers = get_all_tickers()
+        st.write(f"Total tickers found: {len(st.session_state.tickers)}")
+        st.write("Tickers:", st.session_state.tickers)
+
+with col2:
+    # Button to check buy signals
+    if st.button("Check Buy Signals"):
+        if not st.session_state.tickers:
+            st.write("Please fetch tickers first.")
+        else:
+            buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
+            st.write("Tickers with Buy signal:", buy_tickers)
+            st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
