@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import time
 
 # Initialize session state for tickers
 if "tickers" not in st.session_state:
@@ -66,22 +65,16 @@ def check_buy_signal(tickers):
 # Streamlit App Interface
 st.title("Ticker Buy Signal Checker")
 
-# Top row with title and estimated time
-header_col1, header_col2 = st.columns([3, 1])
-with header_col1:
-    st.header("Ticker Buy Signal Checker")
-with header_col2:
-    # Placeholder for estimated time
-    estimated_time = "Approximately 1-2 minutes"
-    st.write("Estimated time to complete:")
-    st.write(estimated_time)
+# Estimated completion time
+with st.columns([1, 3, 1])[2]:  # Creates an extra column on the right
+    st.write("Estimated Time: ~2-5 minutes")
 
 # Single button to fetch tickers and check buy signals
 if st.button("Fetch Tickers and Check Buy Signals"):
     st.session_state.tickers = get_all_tickers()
     buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
     
-    # Two-column layout for results
+    # Two-column layout for tickers display
     col1, col2 = st.columns(2)
     
     with col1:
@@ -93,6 +86,3 @@ if st.button("Fetch Tickers and Check Buy Signals"):
         st.write("Tickers with Buy signal:")
         st.write(buy_tickers)
         st.write(f"Percentage of tickers with Buy signal: {buy_percentage:.2f}%")
-
-    st.write(f"Total tickers found: {len(st.session_state.tickers)}")
-    st.write("All Tickers:", st.session_state.tickers)
