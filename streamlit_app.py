@@ -64,7 +64,7 @@ def check_buy_signal(tickers):
 
 # Streamlit App Interface
 st.title("Stock Checker")
-st.subheader("Earnings this week, SMA20 crossed SMA50 above, Buy Signal")
+st.subheader("Earnings this week, SMA20 crossed SMA50 above, Buys")
 
 # Single button to fetch tickers and check buy signals
 if st.button("Find Stocks"):
