@@ -65,16 +65,12 @@ def check_buy_signal(tickers):
 # Streamlit App Interface
 st.title("Ticker Buy Signal Checker")
 
-# Estimated completion time
-with st.columns([1, 3, 1])[2]:  # Creates an extra column on the right
-    st.write("Estimated Time: ~2-5 minutes")
-
 # Single button to fetch tickers and check buy signals
 if st.button("Fetch Tickers and Check Buy Signals"):
     st.session_state.tickers = get_all_tickers()
     buy_tickers, buy_percentage = check_buy_signal(st.session_state.tickers)
     
-    # Two-column layout for tickers display
+    # Two-column layout
     col1, col2 = st.columns(2)
     
     with col1:
