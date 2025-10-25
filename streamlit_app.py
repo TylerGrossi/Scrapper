@@ -111,7 +111,7 @@ if st.button("Find Stocks"):
     # Sort by earnings date (earliest first)
     buy_stocks = sorted(buy_stocks, key=lambda x: parse_earnings_date(x["earnings"] or ""))
 
-    st.write("### ✅ Tickers with Buy Signal (Sorted by Earnings Date):")
+    st.write("### ✅ Tickers with Buy Signal:")
     if buy_stocks:
         for stock in buy_stocks:
             ticker = stock["ticker"]
