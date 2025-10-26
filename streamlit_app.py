@@ -7,7 +7,7 @@ import pandas as pd
 # --- Page Config ---
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
-# --- Make layout wide and tidy ---
+# --- Custom CSS for Full-Width + Center Alignment ---
 st.markdown("""
     <style>
         .block-container {
@@ -15,20 +15,22 @@ st.markdown("""
             padding-left: 3rem;
             padding-right: 3rem;
         }
-        table {
-            width: 100% !important;
-        }
         h1, h2, h3, h4 {
             text-align: center;
         }
-        div[data-testid="stHorizontalBlock"] > div {
-            justify-content: center !important;
+        div.stButton > button {
+            display: block;
+            margin: 0 auto;
+            background-color: #0e1117 !important;
+            color: white !important;
+            border: 1px solid #444 !important;
+            border-radius: 6px !important;
+            padding: 0.5rem 1.5rem !important;
+            transition: all 0.3s ease !important;
         }
-        .center-button {
-            display: flex;
-            justify-content: center;
-            margin-top: 1rem;
-            margin-bottom: 1rem;
+        div.stButton > button:hover {
+            border-color: #1f77b4 !important;
+            color: #1f77b4 !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -121,10 +123,8 @@ def has_buy_signal(ticker):
 st.title("📈 Stock Checker")
 st.subheader("Earnings this week • SMA20 crossed above SMA50 • Barchart = Buy")
 
-# Centered Find Stocks button
-st.markdown('<div class="center-button">', unsafe_allow_html=True)
+# ✅ Centered Button
 run = st.button("Find Stocks")
-st.markdown('</div>', unsafe_allow_html=True)
 
 if run:
     with st.spinner("Fetching Finviz screener..."):
