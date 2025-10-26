@@ -182,7 +182,7 @@ if run:
     if not rows:
         st.info("No tickers found with a Buy signal right now.")
     else:
-        df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap (M)"])
+        df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap"])
         # removed the header text
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
