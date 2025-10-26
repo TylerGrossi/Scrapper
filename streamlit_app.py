@@ -103,7 +103,7 @@ def get_finviz_data(ticker):
         "Price": "N/A",
         "P/E": "N/A",
         "Beta": "N/A",
-        "Market Cap (M)": "N/A"
+        "Market Cap": "N/A"
     }
 
     try:
@@ -117,7 +117,7 @@ def get_finviz_data(ticker):
             "Price": "Price",
             "P/E": "P/E",
             "Beta": "Beta",
-            "Market Cap": "Market Cap (M)"
+            "Market Cap": "Market Cap"
         }
 
         for t in tables:
@@ -171,7 +171,7 @@ if run:
                     "Price": data["Price"],
                     "P/E": data["P/E"],
                     "Beta": data["Beta"],
-                    "Market Cap": data["Market Cap (M)"],
+                    "Market Cap": data["Market Cap"],
                     "_sort_key": parse_earnings_date(data["Earnings"])
                 })
 
