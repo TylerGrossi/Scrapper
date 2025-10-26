@@ -161,7 +161,7 @@ if run:
         tickers = get_all_tickers()
 
     rows = []
-    with st.spinner("Checking Barchart and pulling Finviz data..."):
+    with st.spinner("Pulling Finviz Data and Checking Barchart..."):
         for t in tickers:
             if has_buy_signal(t):
                 data = get_finviz_data(t)
@@ -171,7 +171,7 @@ if run:
                     "Price": data["Price"],
                     "P/E": data["P/E"],
                     "Beta": data["Beta"],
-                    "Market Cap (M)": data["Market Cap (M)"],
+                    "Market Cap": data["Market Cap (M)"],
                     "_sort_key": parse_earnings_date(data["Earnings"])
                 })
 
@@ -183,7 +183,7 @@ if run:
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap (M)"])
-        st.markdown("### ✅ Tickers with Buy Signal (sorted by earliest earnings date)")
+        st.markdown("### ✅ Tickers That Match Criteria")
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
