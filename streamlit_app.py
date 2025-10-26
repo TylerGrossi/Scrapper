@@ -4,7 +4,25 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pandas as pd
 
-st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="centered")
+# --- Page config ---
+st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
+
+# --- Make content area use full width ---
+st.markdown("""
+    <style>
+        .block-container {
+            max-width: 95% !important;
+            padding-left: 3rem;
+            padding-right: 3rem;
+        }
+        table {
+            width: 100% !important;
+        }
+        h1, h2, h3, h4 {
+            text-align: center;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- Fetch tickers from Finviz screener ---
 def get_all_tickers():
@@ -99,7 +117,7 @@ if st.button("Find Stocks"):
         tickers = get_all_tickers()
 
     rows = []
-    with st.spinner("Pulling Finviz data and Checking Barchart..."):
+    with st.spinner("Checking Barchart and pulling Finviz data..."):
         for t in tickers:
             if has_buy_signal(t):
                 data = get_finviz_data(t)
@@ -118,7 +136,7 @@ if st.button("Find Stocks"):
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price"])
-        st.write("### ✅ Tickers with Buy Signal")
+        st.markdown("### ✅ Tickers with Buy Signal (sorted by earliest earnings date)")
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
