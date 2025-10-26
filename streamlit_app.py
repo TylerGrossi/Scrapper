@@ -7,7 +7,7 @@ import pandas as pd
 # --- Page Config ---
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
-# --- Custom CSS for Full-Width + Center Alignment ---
+# --- Custom CSS for Wide Layout, Centered Button, and Taller Table ---
 st.markdown("""
     <style>
         .block-container {
@@ -25,12 +25,25 @@ st.markdown("""
             color: white !important;
             border: 1px solid #444 !important;
             border-radius: 6px !important;
-            padding: 0.5rem 1.5rem !important;
+            padding: 0.6rem 1.8rem !important;
+            font-size: 1.05rem !important;
             transition: all 0.3s ease !important;
         }
         div.stButton > button:hover {
             border-color: #1f77b4 !important;
             color: #1f77b4 !important;
+        }
+        /* Make table taller and text larger */
+        [data-testid="stDataFrame"] {
+            height: 700px !important;
+        }
+        .stDataFrame tbody tr td {
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            font-size: 1.05rem !important;
+        }
+        .stDataFrame table {
+            width: 100% !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -123,7 +136,7 @@ def has_buy_signal(ticker):
 st.title("📈 Stock Checker")
 st.subheader("Earnings this week • SMA20 crossed above SMA50 • Barchart = Buy")
 
-# ✅ Centered Button
+# --- Centered button ---
 run = st.button("Find Stocks")
 
 if run:
@@ -131,7 +144,7 @@ if run:
         tickers = get_all_tickers()
 
     rows = []
-    with st.spinner("Pulling Finviz Data and Checking Barchart..."):
+    with st.spinner("Checking Barchart and pulling Finviz data..."):
         for t in tickers:
             if has_buy_signal(t):
                 data = get_finviz_data(t)
@@ -150,7 +163,7 @@ if run:
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price"])
-        st.markdown("### ✅ Tickers That Match Criteria")
+        st.markdown("### ✅ Tickers with Buy Signal (sorted by earliest earnings date)")
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
