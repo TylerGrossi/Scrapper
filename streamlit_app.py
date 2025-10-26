@@ -8,6 +8,7 @@ import pandas as pd
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
 # --- Custom CSS ---
+# --- Custom CSS ---
 st.markdown("""
     <style>
         .block-container {
@@ -33,8 +34,13 @@ st.markdown("""
             border-color: #1f77b4 !important;
             color: #1f77b4 !important;
         }
+        /* ---- Table display ---- */
         [data-testid="stDataFrame"] {
-            height: 750px !important;
+            height: auto !important;  /* let it expand naturally */
+            max-height: none !important;
+        }
+        .stDataFrame {
+            overflow: visible !important;  /* disable inner scroll */
         }
         .stDataFrame tbody tr td {
             padding-top: 10px !important;
@@ -43,7 +49,6 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-
 
 # --- Parse "Oct 23 BMO" -> datetime for sorting ---
 def parse_earnings_date(earn_str):
