@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pandas as pd
 
-# --- Streamlit page config ---
+# --- Page setup ---
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
-# --- Custom CSS styling ---
+# --- CSS ---
 st.markdown("""
     <style>
         .block-container {
@@ -15,7 +15,7 @@ st.markdown("""
             padding-left: 3rem;
             padding-right: 3rem;
         }
-        h1, h2, h3, h4 {
+        h1, h2, h3 {
             text-align: center;
         }
         div.stButton > button {
@@ -44,14 +44,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Get tickers from Finviz screener ---
+
+# --- Finviz Screener Function ---
 def get_all_tickers():
     base_url = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    offset = 0
+    headers = {"User-Agent": "Mozilla/5.0"}
     tickers = []
+    offset = 0
     while True:
         url = f"{base_url}&r={offset + 1}"
         response = requests.get(url, headers=headers)
@@ -65,15 +64,16 @@ def get_all_tickers():
                     new_tickers.append(ticker)
         if not new_tickers:
             break
-        tickers.extend(t for t in new_tickers if t not in tickers)
+        tickers.extend([t for t in new_tickers if t not in tickers])
         offset += 20
     return tickers
 
 
-# --- Parse Finviz data (Snapshot + Financial) ---
+# --- Finviz Quote Parser (Snapshot + Financial tab) ---
 def get_finviz_data(ticker):
     headers = {"User-Agent": "Mozilla/5.0"}
     base_url = f"https://finviz.com/quote.ashx?t={ticker}"
+
     data = {
         "Ticker": ticker,
         "Earnings": "N/A",
@@ -86,12 +86,12 @@ def get_finviz_data(ticker):
     }
 
     try:
-        # --- Snapshot section ---
+        # --- Snapshot data ---
         r = requests.get(base_url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
-        tables = soup.find_all("table")
-        if len(tables) >= 9:
-            cells = tables[8].find_all("td")
+        snapshot = soup.find("table", class_="snapshot-table2")
+        if snapshot:
+            cells = snapshot.find_all("td")
             for i in range(0, len(cells), 2):
                 key = cells[i].get_text(strip=True)
                 val = cells[i + 1].get_text(strip=True)
@@ -112,12 +112,13 @@ def get_finviz_data(ticker):
                     elif "M" in val:
                         cap = float(val.replace("M", "")) / 1000
                     else:
-                        cap = float(val) if val.replace(".", "").isdigit() else None
+                        cap = None
                     if cap is not None:
                         data["Market Cap (B)"] = f"{cap:.2f}B"
 
-        # --- Financial section (for Forward P/E etc.) ---
-        r_fin = requests.get(f"{base_url}&p=financial", headers=headers, timeout=10)
+        # --- Financial tab ---
+        fin_url = f"https://finviz.com/quote.ashx?t={ticker}&p=financial"
+        r_fin = requests.get(fin_url, headers=headers, timeout=10)
         soup_fin = BeautifulSoup(r_fin.text, "html.parser")
         fin_table = soup_fin.find("table", class_="snapshot-table2")
         if fin_table:
@@ -130,10 +131,11 @@ def get_finviz_data(ticker):
 
     except Exception as e:
         print(f"Error fetching {ticker}: {e}")
+
     return data
 
 
-# --- Parse date string (for sorting) ---
+# --- Parse "Oct 22 AMC" for sorting ---
 def parse_earnings_date(earn_str):
     try:
         parts = (earn_str or "").split()
@@ -145,13 +147,12 @@ def parse_earnings_date(earn_str):
     return datetime.max
 
 
-# --- Check Buy signal from Barchart ---
+# --- Barchart Signal Checker ---
 def has_buy_signal(ticker):
     headers = {"User-Agent": "Mozilla/5.0"}
     url = f"https://www.barchart.com/stocks/quotes/{ticker}/opinion"
     try:
         r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         sig = soup.find("span", class_="opinion-signal buy")
         return bool(sig and "Buy" in sig.text)
@@ -159,7 +160,7 @@ def has_buy_signal(ticker):
         return False
 
 
-# --- Streamlit UI ---
+# --- UI ---
 st.title("📈 Stock Checker")
 st.subheader("Earnings this week • SMA20 crossed above SMA50 • Barchart = Buy")
 
@@ -170,7 +171,7 @@ if run:
         tickers = get_all_tickers()
 
     rows = []
-    with st.spinner("Checking Barchart and gathering fundamentals..."):
+    with st.spinner("Checking Barchart and pulling Finviz data..."):
         for t in tickers:
             if has_buy_signal(t):
                 d = get_finviz_data(t)
