@@ -6,7 +6,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="centered")
 
-# --- Fetch tickers from Finviz screener (same as your original) ---
+# --- Fetch tickers from Finviz screener ---
 def get_all_tickers():
     base_url = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
     headers = {
@@ -99,7 +99,7 @@ if st.button("Find Stocks"):
         tickers = get_all_tickers()
 
     rows = []
-    with st.spinner("Checking Barchart and pulling Finviz data..."):
+    with st.spinner("Pulling Finviz data and Checking Barchart..."):
         for t in tickers:
             if has_buy_signal(t):
                 data = get_finviz_data(t)
@@ -118,7 +118,7 @@ if st.button("Find Stocks"):
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price"])
-        st.write("### ✅ Tickers with Buy Signal (sorted by earliest earnings date)")
-        st.dataframe(df, use_container_width=True)
+        st.write("### ✅ Tickers with Buy Signal")
+        st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
