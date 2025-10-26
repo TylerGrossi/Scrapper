@@ -7,7 +7,7 @@ import pandas as pd
 # --- Page Config ---
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
-# --- Custom CSS for Wide Layout, Centered Button, and Taller Table ---
+# --- Custom CSS ---
 st.markdown("""
     <style>
         .block-container {
@@ -33,22 +33,18 @@ st.markdown("""
             border-color: #1f77b4 !important;
             color: #1f77b4 !important;
         }
-        /* Make table taller and text larger */
         [data-testid="stDataFrame"] {
-            height: 700px !important;
+            height: 750px !important;
         }
         .stDataFrame tbody tr td {
             padding-top: 10px !important;
             padding-bottom: 10px !important;
             font-size: 1.05rem !important;
         }
-        .stDataFrame table {
-            width: 100% !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- Fetch tickers from Finviz screener ---
+# --- Get tickers from Finviz screener ---
 def get_all_tickers():
     base_url = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
     headers = {
@@ -56,7 +52,6 @@ def get_all_tickers():
     }
     offset = 0
     tickers = []
-
     while True:
         url = f"{base_url}&r={offset + 1}"
         response = requests.get(url, headers=headers)
@@ -72,20 +67,27 @@ def get_all_tickers():
 
         if not new_tickers:
             break
-
         tickers.extend(t for t in new_tickers if t not in tickers)
         offset += 20
-
     return tickers
 
 
-# --- Fetch price + earnings date from Finviz quote page ---
+# --- Get Finviz quote metrics ---
 def get_finviz_data(ticker):
     url = f"https://finviz.com/quote.ashx?t={ticker}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    data = {"Ticker": ticker, "Earnings": None, "Price": None}
+    data = {
+        "Ticker": ticker,
+        "Earnings": None,
+        "Price": None,
+        "P/E": None,
+        "Dividend": None,
+        "52W Range": None,
+        "Beta": None,
+        "Market Cap (M)": None,
+    }
     try:
         r = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
@@ -99,6 +101,22 @@ def get_finviz_data(ticker):
                     data["Earnings"] = val
                 elif key == "Price":
                     data["Price"] = val
+                elif key == "P/E":
+                    data["P/E"] = val
+                elif key == "Dividend %":
+                    data["Dividend"] = val
+                elif key == "52W Range":
+                    data["52W Range"] = val
+                elif key == "Beta":
+                    data["Beta"] = val
+                elif key == "Market Cap":
+                    if "B" in val:
+                        val_m = float(val.replace("B", "")) * 1000
+                    elif "M" in val:
+                        val_m = float(val.replace("M", ""))
+                    else:
+                        val_m = val
+                    data["Market Cap (M)"] = round(float(val_m), 1) if isinstance(val_m, (float, int)) else val
     except Exception:
         pass
     return data
@@ -136,7 +154,7 @@ def has_buy_signal(ticker):
 st.title("📈 Stock Checker")
 st.subheader("Earnings this week • SMA20 crossed above SMA50 • Barchart = Buy")
 
-# --- Centered button ---
+# Centered Button
 run = st.button("Find Stocks")
 
 if run:
@@ -152,6 +170,11 @@ if run:
                     "Ticker": data["Ticker"],
                     "Earnings": data["Earnings"] or "N/A",
                     "Price": data["Price"] or "N/A",
+                    "P/E": data["P/E"] or "N/A",
+                    "Dividend": data["Dividend"] or "N/A",
+                    "52W Range": data["52W Range"] or "N/A",
+                    "Beta": data["Beta"] or "N/A",
+                    "Market Cap (M)": data["Market Cap (M)"] or "N/A",
                     "_sort_key": parse_earnings_date(data["Earnings"])
                 })
 
@@ -162,7 +185,7 @@ if run:
     if not rows:
         st.info("No tickers found with a Buy signal right now.")
     else:
-        df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price"])
+        df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Dividend", "52W Range", "Beta", "Market Cap (M)"])
         st.markdown("### ✅ Tickers with Buy Signal (sorted by earliest earnings date)")
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
