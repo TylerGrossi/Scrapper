@@ -183,7 +183,7 @@ if run:
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap (M)"])
-        st.markdown("### ✅ Tickers That Match Criteria")
+        # removed the header text
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
