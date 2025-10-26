@@ -72,7 +72,6 @@ def get_all_tickers():
     return tickers
 
 
-# --- Get Finviz quote metrics ---
 def get_finviz_data(ticker):
     url = f"https://finviz.com/quote.ashx?t={ticker}"
     headers = {
@@ -88,39 +87,44 @@ def get_finviz_data(ticker):
         "Beta": None,
         "Market Cap (M)": None,
     }
+
     try:
         r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         tables = soup.find_all("table")
+
         if len(tables) >= 9:
             cells = tables[8].find_all("td")
+
             for i in range(0, len(cells), 2):
                 key = cells[i].get_text(strip=True)
                 val = cells[i + 1].get_text(strip=True)
+
                 if key == "Earnings":
                     data["Earnings"] = val
                 elif key == "Price":
                     data["Price"] = val
                 elif key == "P/E":
                     data["P/E"] = val
-                elif key == "Dividend %":
-                    data["Dividend"] = val
+                elif key in ["Dividend %", "Dividend"]:
+                    data["Dividend"] = val if val else "N/A"
                 elif key == "52W Range":
-                    data["52W Range"] = val
+                    data["52W Range"] = val if val else "N/A"
                 elif key == "Beta":
                     data["Beta"] = val
                 elif key == "Market Cap":
-                    if "B" in val:
-                        val_m = float(val.replace("B", "")) * 1000
-                    elif "M" in val:
-                        val_m = float(val.replace("M", ""))
-                    else:
-                        val_m = val
-                    data["Market Cap (M)"] = round(float(val_m), 1) if isinstance(val_m, (float, int)) else val
+                    # Keep the same format as Finviz (e.g. 8.60B or 53.19M)
+                    data["Market Cap (M)"] = val
     except Exception:
         pass
-    return data
 
+    # Fill in any blanks with "N/A"
+    for k, v in data.items():
+        if not v:
+            data[k] = "N/A"
+
+    return data
 
 # --- Parse "Oct 23 BMO" -> datetime for sorting ---
 def parse_earnings_date(earn_str):
