@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pandas as pd
 
-# --- Page config ---
+# --- Page Config ---
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
-# --- Make content area use full width ---
+# --- Make layout wide and tidy ---
 st.markdown("""
     <style>
         .block-container {
@@ -20,6 +20,15 @@ st.markdown("""
         }
         h1, h2, h3, h4 {
             text-align: center;
+        }
+        div[data-testid="stHorizontalBlock"] > div {
+            justify-content: center !important;
+        }
+        .center-button {
+            display: flex;
+            justify-content: center;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -112,7 +121,12 @@ def has_buy_signal(ticker):
 st.title("📈 Stock Checker")
 st.subheader("Earnings this week • SMA20 crossed above SMA50 • Barchart = Buy")
 
-if st.button("Find Stocks"):
+# Centered Find Stocks button
+st.markdown('<div class="center-button">', unsafe_allow_html=True)
+run = st.button("Find Stocks")
+st.markdown('</div>', unsafe_allow_html=True)
+
+if run:
     with st.spinner("Fetching Finviz screener..."):
         tickers = get_all_tickers()
 
