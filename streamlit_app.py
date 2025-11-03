@@ -8,7 +8,6 @@ import pandas as pd
 st.set_page_config(page_title="Earnings Week Momentum", page_icon="📈", layout="wide")
 
 # --- Custom CSS ---
-# --- Custom CSS ---
 st.markdown("""
     <style>
         .block-container {
@@ -34,13 +33,12 @@ st.markdown("""
             border-color: #1f77b4 !important;
             color: #1f77b4 !important;
         }
-        /* ---- Table display ---- */
         [data-testid="stDataFrame"] {
-            height: auto !important;  /* let it expand naturally */
+            height: auto !important;
             max-height: none !important;
         }
         .stDataFrame {
-            overflow: visible !important;  /* disable inner scroll */
+            overflow: visible !important;
         }
         .stDataFrame tbody tr td {
             padding-top: 10px !important;
@@ -60,7 +58,6 @@ def parse_earnings_date(earn_str):
     except Exception:
         pass
     return datetime.max
-
 
 # --- Get tickers from Finviz screener ---
 def get_all_tickers():
@@ -88,7 +85,6 @@ def get_all_tickers():
         tickers.extend(t for t in new_tickers if t not in tickers)
         offset += 20
     return tickers
-
 
 # --- Get Finviz quote metrics ---
 def get_finviz_data(ticker):
@@ -133,7 +129,6 @@ def get_finviz_data(ticker):
 
     return data
 
-
 # --- Check Buy signal from Barchart ---
 def has_buy_signal(ticker):
     headers = {
@@ -149,6 +144,12 @@ def has_buy_signal(ticker):
     except Exception:
         return False
 
+# --- Custom sorting function: date first, then BMO before AMC ---
+def earnings_sort_key(row):
+    date = parse_earnings_date(row["Earnings"])
+    earn_str = (row["Earnings"] or "").upper()
+    am_pm_rank = 0 if "BMO" in earn_str else 1 if "AMC" in earn_str else 2
+    return (date, am_pm_rank)
 
 # --- Streamlit UI ---
 st.title("📈 Stock Checker")
@@ -171,19 +172,16 @@ if run:
                     "Price": data["Price"],
                     "P/E": data["P/E"],
                     "Beta": data["Beta"],
-                    "Market Cap": data["Market Cap"],
-                    "_sort_key": parse_earnings_date(data["Earnings"])
+                    "Market Cap": data["Market Cap"]
                 })
 
-    rows = sorted(rows, key=lambda r: r["_sort_key"])
-    for r in rows:
-        r.pop("_sort_key", None)
+    # --- Sort by date, then BMO before AMC ---
+    rows = sorted(rows, key=earnings_sort_key)
 
     if not rows:
         st.info("No tickers found with a Buy signal right now.")
     else:
         df = pd.DataFrame(rows, columns=["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap"])
-        # removed the header text
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.caption("Click **Find Stocks** to fetch the current list.")
