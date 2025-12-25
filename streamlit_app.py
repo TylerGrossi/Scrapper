@@ -321,20 +321,6 @@ with tab2:
             st.success(f"✅ Loaded {len(returns_df)} trades from uploaded file!")
     
     if returns_df is not None and not returns_df.empty:
-        # Header
-        st.markdown("""
-        <div class="exit-header">
-            <div style="font-size: 0.75rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;">
-                Quantitative Analysis
-            </div>
-            <div style="font-size: 1.4rem; font-weight: 500; color: #f8fafc; margin-top: 0.25rem;">
-                Optimal Exit Strategy
-            </div>
-            <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem;">
-                Based on {} historical trades
-            </div>
-        </div>
-        """.format(len(returns_df)), unsafe_allow_html=True)
         
         # Calculate stats
         periods = {
@@ -346,73 +332,140 @@ with tab2:
         }
         stats = {name: calc_period_stats(returns_df, col) for col, name in periods.items()}
         
-        # Key Metrics
-        st.markdown("### 📊 Key Metrics")
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # =================================================================
+        # TRADING RULES SECTION - THE MAIN STRATEGY
+        # =================================================================
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); 
+                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;
+                    border: 1px solid #10b981;">
+            <h2 style="color: white; margin: 0; font-size: 1.5rem;">📋 TRADING RULES</h2>
+            <p style="color: #a7f3d0; margin: 0.5rem 0 0 0; font-size: 0.95rem;">
+                Follow these rules for every trade. Based on {} historical trades.
+            </p>
+        </div>
+        """.format(len(returns_df)), unsafe_allow_html=True)
+        
+        # THE CORE STRATEGY - Simple Decision Tree
+        st.markdown("### 🎯 The Strategy: When to Sell")
+        
+        st.markdown("""
+        <div style="background: #1e293b; border: 2px solid #f59e0b; border-radius: 12px; padding: 1.5rem; margin: 1rem 0;">
+            <div style="font-size: 1.1rem; color: #f8fafc; line-height: 1.8;">
+                <div style="display: flex; align-items: start; margin-bottom: 1rem;">
+                    <span style="background: #dc2626; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; margin-right: 12px; white-space: nowrap;">RULE 1</span>
+                    <span><strong>ALWAYS set a -8% stop loss</strong> when you enter the trade. This is non-negotiable.</span>
+                </div>
+                <div style="display: flex; align-items: start; margin-bottom: 1rem;">
+                    <span style="background: #16a34a; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; margin-right: 12px; white-space: nowrap;">RULE 2</span>
+                    <span><strong>Take profit at +10%</strong> if it hits within the first 7 days.</span>
+                </div>
+                <div style="display: flex; align-items: start; margin-bottom: 1rem;">
+                    <span style="background: #2563eb; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; margin-right: 12px; white-space: nowrap;">RULE 3</span>
+                    <span><strong>Default exit: Day 5 close</strong> if neither stop nor target is hit.</span>
+                </div>
+                <div style="display: flex; align-items: start;">
+                    <span style="background: #7c3aed; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; margin-right: 12px; white-space: nowrap;">RULE 4</span>
+                    <span><strong>Move stop to breakeven</strong> after stock gains +5% (protects profits).</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # DECISION FLOWCHART
+        st.markdown("### 🔀 Decision Flowchart: What To Do Each Day")
+        
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.metric("🎯 Optimal Hold", "5 Days", help="Best risk-adjusted returns")
+            st.markdown("""
+            <div style="background: #1e293b; border: 1px solid #475569; border-radius: 12px; padding: 1.25rem;">
+                <h4 style="color: #f59e0b; margin-top: 0;">📅 DAY 1 (After Earnings)</h4>
+                <div style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.7;">
+                    <p><strong>Check your position:</strong></p>
+                    <ul style="margin: 0.5rem 0;">
+                        <li>Down 8% or more? → <span style="color: #ef4444; font-weight: bold;">SELL (stop hit)</span></li>
+                        <li>Up 10% or more? → <span style="color: #10b981; font-weight: bold;">SELL (target hit)</span></li>
+                        <li>Up 5%+? → <span style="color: #f59e0b;">Move stop to breakeven</span></li>
+                        <li>Otherwise → <span style="color: #94a3b8;">Hold, continue to Day 2</span></li>
+                    </ul>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: #1e293b; border: 1px solid #475569; border-radius: 12px; padding: 1.25rem; margin-top: 1rem;">
+                <h4 style="color: #f59e0b; margin-top: 0;">📅 DAYS 2-4</h4>
+                <div style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.7;">
+                    <p><strong>Same rules apply daily:</strong></p>
+                    <ul style="margin: 0.5rem 0;">
+                        <li>Hit -8% from entry? → <span style="color: #ef4444; font-weight: bold;">SELL</span></li>
+                        <li>Hit +10% from entry? → <span style="color: #10b981; font-weight: bold;">SELL</span></li>
+                        <li>Otherwise → <span style="color: #94a3b8;">Hold until Day 5</span></li>
+                    </ul>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
         with col2:
-            wr = stats['5 Days']['win_rate'] * 100
-            st.metric("✅ Win Rate", f"{wr:.1f}%", delta="5-day period")
-        with col3:
-            avg = stats['5 Days']['mean'] * 100
-            st.metric("💰 Avg Return", f"+{avg:.2f}%")
-        with col4:
-            st.metric("🎯 Profit Target", "+10%", help="38% hit rate in 7 days")
-        with col5:
-            st.metric("🛑 Stop Loss", "-8%", help="24.7% trigger rate")
+            st.markdown("""
+            <div style="background: #1e293b; border: 1px solid #475569; border-radius: 12px; padding: 1.25rem;">
+                <h4 style="color: #10b981; margin-top: 0;">📅 DAY 5 (Default Exit)</h4>
+                <div style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.7;">
+                    <p><strong>If you still hold the position:</strong></p>
+                    <div style="background: #065f46; padding: 1rem; border-radius: 8px; text-align: center; margin: 0.5rem 0;">
+                        <span style="color: white; font-weight: bold; font-size: 1.1rem;">SELL AT MARKET CLOSE</span>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.75rem;">
+                        Why? Returns turn negative after Day 5. Don't hold hoping for more gains.
+                    </p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="background: #450a0a; border: 1px solid #dc2626; border-radius: 12px; padding: 1.25rem; margin-top: 1rem;">
+                <h4 style="color: #fca5a5; margin-top: 0;">⚠️ DO NOT</h4>
+                <div style="color: #fecaca; font-size: 0.95rem; line-height: 1.7;">
+                    <ul style="margin: 0.5rem 0;">
+                        <li>Hold past Day 5 hoping to recover</li>
+                        <li>Remove your stop loss</li>
+                        <li>Average down on losers</li>
+                        <li>Let winners turn into losers</li>
+                    </ul>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # Strategy Rules Box
-        st.markdown("### 🎯 Exit Strategy Rules")
+        # QUICK REFERENCE CARD
+        st.markdown("### 📊 Quick Reference")
+        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.success("""
-            **PRIMARY EXIT**
-            
-            📅 **Day 5 Close**
-            
-            Captures 80%+ of momentum before decay sets in
-            """)
-        
+            st.metric("🛑 Stop Loss", "-8%", help="Set immediately when entering trade")
         with col2:
-            st.info("""
-            **PROFIT TARGET**
-            
-            📈 **+10%**
-            
-            38% probability of hitting within 7 days
-            """)
-        
+            st.metric("🎯 Profit Target", "+10%", help="Take profits if hit within 7 days")
         with col3:
-            st.error("""
-            **STOP LOSS**
-            
-            📉 **-8%**
-            
-            Limits losses; avg loss if held: -12.7%
-            """)
-        
+            st.metric("📅 Max Hold", "5 Days", help="Exit by Day 5 close regardless")
         with col4:
-            st.warning("""
-            **TRAIL STOP**
-            
-            🔒 **Breakeven @ +5%**
-            
-            Move stop to entry after 5% gain
-            """)
+            st.metric("🔒 Trail Stop", "BE @ +5%", help="Move stop to breakeven after 5% gain")
         
         st.markdown("---")
         
-        # Detailed Analysis Tabs
+        # WHY THESE RULES WORK - Data Evidence
+        st.markdown("### 📈 Why These Rules Work (The Data)")
+        
         analysis_tab1, analysis_tab2, analysis_tab3, analysis_tab4 = st.tabs([
-            "📈 Performance", "⏱️ Momentum Decay", "🏢 Sectors", "⚠️ Risk Mgmt"
+            "📊 Holding Period", "⏱️ Momentum Decay", "🏢 Sector Rules", "⚠️ Risk Analysis"
         ])
         
         with analysis_tab1:
+            st.markdown("#### Returns by Holding Period")
+            st.caption("5-day hold has the best risk-adjusted returns (Sharpe ratio)")
+            
             col1, col2 = st.columns(2)
             
             with col1:
@@ -430,47 +483,36 @@ with tab2:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font_color='#e2e8f0',
-                    height=400
+                    height=350
                 )
                 fig.update_xaxes(gridcolor='#334155')
                 fig.update_yaxes(gridcolor='#334155')
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                # Mean Return + Win Rate
-                perf_data = pd.DataFrame([
-                    {'Period': name, 'Mean Return %': s['mean']*100, 'Win Rate %': s['win_rate']*100}
-                    for name, s in stats.items()
-                ])
+                # Performance table
+                perf_data = []
+                for name, s in stats.items():
+                    perf_data.append({
+                        'Period': name,
+                        'Avg Return': f"{s['mean']*100:+.2f}%",
+                        'Win Rate': f"{s['win_rate']*100:.1f}%",
+                        'Sharpe': f"{s['sharpe']:.3f}"
+                    })
                 
-                fig = make_subplots(specs=[[{"secondary_y": True}]])
-                fig.add_trace(
-                    go.Bar(x=perf_data['Period'], y=perf_data['Mean Return %'], 
-                          name='Mean Return %', marker_color='#10b981'),
-                    secondary_y=False
-                )
-                fig.add_trace(
-                    go.Scatter(x=perf_data['Period'], y=perf_data['Win Rate %'],
-                              name='Win Rate %', line=dict(color='#f59e0b', width=3),
-                              mode='lines+markers', marker=dict(size=10)),
-                    secondary_y=True
-                )
-                fig.update_layout(
-                    title='Return & Win Rate by Holding Period',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#e2e8f0',
-                    height=400,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02)
-                )
-                fig.update_xaxes(gridcolor='#334155')
-                fig.update_yaxes(gridcolor='#334155', title_text="Mean Return %", secondary_y=False)
-                fig.update_yaxes(gridcolor='#334155', title_text="Win Rate %", range=[50, 70], secondary_y=True)
-                st.plotly_chart(fig, use_container_width=True)
+                perf_df = pd.DataFrame(perf_data)
+                st.dataframe(perf_df, use_container_width=True, hide_index=True)
+                
+                st.success(f"""
+                **Best Period: 5 Days**
+                - Win Rate: {stats['5 Days']['win_rate']*100:.1f}%
+                - Avg Return: {stats['5 Days']['mean']*100:+.2f}%
+                - Sharpe: {stats['5 Days']['sharpe']:.3f}
+                """)
         
         with analysis_tab2:
-            st.markdown("#### Marginal Return Analysis")
-            st.caption("How much additional return does each period contribute?")
+            st.markdown("#### Why Exit by Day 5?")
+            st.caption("Marginal returns turn NEGATIVE after Day 5")
             
             # Calculate marginal returns
             cols = ['1D Return', '3D Return', '5D Return', '7D Return', '10D Return']
@@ -497,34 +539,58 @@ with tab2:
             with col1:
                 colors = ['#10b981' if x > 0 else '#ef4444' for x in marginal_df['Marginal Return %']]
                 fig = px.bar(marginal_df, x='Period', y='Marginal Return %',
-                            title='Marginal Return by Period')
+                            title='Additional Return Each Period')
                 fig.update_traces(marker_color=colors)
                 fig.add_hline(y=0, line_dash="dash", line_color="#475569")
                 fig.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font_color='#e2e8f0',
-                    height=400
+                    height=350
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                fig = px.area(marginal_df, x='Period', y='Cumulative %',
-                             title='Cumulative Return Path')
-                fig.update_traces(fill='tozeroy', line_color='#10b981',
-                                 fillcolor='rgba(16, 185, 129, 0.2)')
-                fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#e2e8f0',
-                    height=400
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            st.error("⚠️ **Key Insight:** Returns turn NEGATIVE after Day 5. Most alpha is captured in the first 3 days.")
+                st.markdown("""
+                <div style="background: #1e293b; border-radius: 12px; padding: 1.25rem; height: 100%;">
+                    <h4 style="color: #f8fafc; margin-top: 0;">📉 The Decay Pattern</h4>
+                    <table style="width: 100%; color: #e2e8f0; font-size: 0.95rem;">
+                        <tr style="border-bottom: 1px solid #475569;">
+                            <td style="padding: 8px 0;"><strong>Day 1</strong></td>
+                            <td style="color: #10b981; text-align: right;"><strong>+{:.2f}%</strong></td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #475569;">
+                            <td style="padding: 8px 0;">Days 2-3</td>
+                            <td style="color: #10b981; text-align: right;">+{:.2f}%</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #475569;">
+                            <td style="padding: 8px 0;">Days 4-5</td>
+                            <td style="color: #f59e0b; text-align: right;">+{:.2f}%</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #475569;">
+                            <td style="padding: 8px 0;">Days 6-7</td>
+                            <td style="color: #ef4444; text-align: right;"><strong>{:.2f}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0;">Days 8-10</td>
+                            <td style="color: #ef4444; text-align: right;"><strong>{:.2f}%</strong></td>
+                        </tr>
+                    </table>
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 1rem; margin-bottom: 0;">
+                        After Day 5, you're <strong>losing money</strong> on average by holding.
+                    </p>
+                </div>
+                """.format(
+                    marginal_df.iloc[0]['Marginal Return %'],
+                    marginal_df.iloc[1]['Marginal Return %'],
+                    marginal_df.iloc[2]['Marginal Return %'],
+                    marginal_df.iloc[3]['Marginal Return %'],
+                    marginal_df.iloc[4]['Marginal Return %']
+                ), unsafe_allow_html=True)
         
         with analysis_tab3:
-            st.markdown("#### Sector Performance")
+            st.markdown("#### Sector-Specific Adjustments")
+            st.caption("Some sectors work better with different holding periods")
             
             if 'Sector' in returns_df.columns:
                 sector_stats = []
@@ -545,76 +611,85 @@ with tab2:
                         sector_stats.append({
                             'Sector': sector,
                             'Trades': len(sector_df),
-                            '1D Avg': sector_df['1D Return'].mean() * 100 if '1D Return' in sector_df else 0,
-                            '5D Avg': sector_df['5D Return'].mean() * 100 if '5D Return' in sector_df else 0,
                             'Optimal Days': best_days,
                             'Sharpe': best_sharpe
                         })
                 
-                sector_df = pd.DataFrame(sector_stats).sort_values('Sharpe', ascending=True)
+                sector_df_display = pd.DataFrame(sector_stats).sort_values('Sharpe', ascending=False)
                 
-                fig = px.bar(sector_df, y='Sector', x='Sharpe', orientation='h',
-                            title='Sector Performance (Sharpe Ratio)',
-                            color='Sharpe', color_continuous_scale='YlOrRd')
-                fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#e2e8f0',
-                    height=450
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                col1, col2 = st.columns([2, 1])
                 
-                # Sector recommendations
-                col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.success("**Hold Longer (7-10 days)**\n\n• Financial Services\n• Real Estate\n• Basic Materials")
+                    fig = px.bar(sector_df_display.sort_values('Sharpe'), 
+                                y='Sector', x='Sharpe', orientation='h',
+                                title='Sector Performance (Sharpe Ratio)',
+                                color='Optimal Days',
+                                color_continuous_scale='RdYlGn')
+                    fig.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#e2e8f0',
+                        height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
                 with col2:
-                    st.warning("**Standard Hold (5 days)**\n\n• Energy\n• Consumer Cyclical\n• Healthcare")
-                with col3:
-                    st.error("**Exit Early (1-3 days)**\n\n• Technology\n• Communication Services\n• Industrials")
+                    st.markdown("""
+                    <div style="background: #14532d; border: 1px solid #22c55e; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+                        <strong style="color: #86efac;">Exit Early (1-3 days)</strong>
+                        <p style="color: #bbf7d0; font-size: 0.85rem; margin: 0.5rem 0 0 0;">Technology, Comm Services</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("""
+                    <div style="background: #422006; border: 1px solid #f59e0b; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+                        <strong style="color: #fcd34d;">Standard (5 days)</strong>
+                        <p style="color: #fef3c7; font-size: 0.85rem; margin: 0.5rem 0 0 0;">Healthcare, Energy, Consumer</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("""
+                    <div style="background: #1e3a5f; border: 1px solid #3b82f6; border-radius: 8px; padding: 1rem;">
+                        <strong style="color: #93c5fd;">Hold Longer (7-10 days)</strong>
+                        <p style="color: #bfdbfe; font-size: 0.85rem; margin: 0.5rem 0 0 0;">Financials, Real Estate</p>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
                 st.info("Sector data not available in returns file.")
         
         with analysis_tab4:
-            st.markdown("#### Risk Management Analysis")
+            st.markdown("#### Why -8% Stop Loss?")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("##### Stop-Loss Analysis")
+                st.markdown("##### Stop Loss Effectiveness")
                 
                 if '1W Low Return' in returns_df.columns:
                     stop_data = []
                     for stop in [0.05, 0.08, 0.10, 0.15]:
                         stopped = returns_df[returns_df['1W Low Return'] < -stop]
                         pct = len(stopped) / len(returns_df) * 100
-                        avg_7d = stopped['7D Return'].dropna().mean() * 100 if len(stopped) > 0 and '7D Return' in stopped else 0
+                        avg_7d = stopped['7D Return'].dropna().mean() * 100 if len(stopped) > 0 else 0
                         stop_data.append({
-                            'Stop Level': f"-{int(stop*100)}%",
-                            'Triggered %': pct,
-                            'Avg 7D if Held': avg_7d,
-                            'Optimal': stop == 0.08
+                            'Stop': f"-{int(stop*100)}%",
+                            'Trades Stopped': f"{pct:.1f}%",
+                            'Avg Loss if Held': f"{avg_7d:.1f}%",
+                            'Recommended': '✅' if stop == 0.08 else ''
                         })
                     
                     stop_df = pd.DataFrame(stop_data)
-                    colors = ['#f59e0b' if x else '#ef4444' for x in stop_df['Optimal']]
+                    st.dataframe(stop_df, use_container_width=True, hide_index=True)
                     
-                    fig = px.bar(stop_df, x='Stop Level', y='Triggered %',
-                                title='Stop-Loss Trigger Rate')
-                    fig.update_traces(marker_color=colors)
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#e2e8f0',
-                        height=350
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.caption("**-8% Recommended:** Only 24.7% triggered, protects from avg -12.7% loss")
-                else:
-                    st.info("Stop-loss data not available.")
+                    st.info("""
+                    **-8% is optimal because:**
+                    - Only triggers on 24.7% of trades
+                    - Those trades average -12.7% if held
+                    - Saves ~4.7% per stopped trade
+                    """)
             
             with col2:
-                st.markdown("##### Profit Target Analysis")
+                st.markdown("##### Why +10% Profit Target?")
                 
                 if '1W High Return' in returns_df.columns:
                     target_data = []
@@ -623,43 +698,19 @@ with tab2:
                         pct = len(hit) / len(returns_df) * 100
                         target_data.append({
                             'Target': f"+{int(target*100)}%",
-                            'Hit Rate %': pct,
-                            'Optimal': target == 0.10
+                            'Hit Rate': f"{pct:.1f}%",
+                            'Recommended': '✅' if target == 0.10 else ''
                         })
                     
                     target_df = pd.DataFrame(target_data)
-                    colors = ['#f59e0b' if x else '#10b981' for x in target_df['Optimal']]
+                    st.dataframe(target_df, use_container_width=True, hide_index=True)
                     
-                    fig = px.bar(target_df, x='Target', y='Hit Rate %',
-                                title='Profit Target Hit Rate (within 7 days)')
-                    fig.update_traces(marker_color=colors)
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#e2e8f0',
-                        height=350
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    st.caption("**+10% Recommended:** 38% hit rate, good risk/reward balance")
-                else:
-                    st.info("Profit target data not available.")
-            
-            # Summary stats
-            st.markdown("---")
-            st.markdown("#### Risk/Reward Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            if '1W High Return' in returns_df.columns and '1W Low Return' in returns_df.columns:
-                avg_high = returns_df['1W High Return'].mean() * 100
-                avg_low = returns_df['1W Low Return'].mean() * 100
-                avg_range = (returns_df['1W High Return'] - returns_df['1W Low Return']).mean() * 100
-                win_loss = abs(stats['5 Days']['avg_win'] / stats['5 Days']['avg_loss']) if stats['5 Days']['avg_loss'] != 0 else 0
-                
-                col1.metric("Avg 7D High", f"+{avg_high:.1f}%")
-                col2.metric("Avg 7D Low", f"{avg_low:.1f}%")
-                col3.metric("Avg 7D Range", f"{avg_range:.1f}%")
-                col4.metric("Win/Loss Ratio", f"{win_loss:.2f}x")
+                    st.info("""
+                    **+10% is optimal because:**
+                    - 38% of trades hit this target
+                    - Good balance of win rate vs. profit size
+                    - Higher targets have diminishing hit rates
+                    """)
 
 # =============================================================================
 # TAB 3: POWERBI DASHBOARD EMBED
