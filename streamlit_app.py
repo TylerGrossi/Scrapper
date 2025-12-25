@@ -666,39 +666,91 @@ with tab2:
 # =============================================================================
 with tab3:
     st.markdown("### 📈 PowerBI Dashboard")
-    st.caption("Interactive returns tracking and performance analytics")
     
-    # Add some spacing and better container
-    st.markdown("""
-    <style>
-        .powerbi-container {
-            background: #1e293b;
+    # View mode selector
+    view_mode = st.radio(
+        "View Mode:",
+        ["Embedded (Interactive)", "Fullscreen Link"],
+        horizontal=True,
+        help="Embedded view works within the page. Fullscreen opens in a new tab for best experience."
+    )
+    
+    if view_mode == "Embedded (Interactive)":
+        st.caption("💡 For best viewing experience, use the Fullscreen Link or scroll horizontally if needed")
+        
+        # Use a larger container with scroll capability
+        st.markdown("""
+        <style>
+            .powerbi-wrapper {
+                width: 100%;
+                overflow-x: auto;
+                background: #0f172a;
+                border-radius: 12px;
+                padding: 8px;
+                border: 1px solid #334155;
+            }
+            .powerbi-wrapper iframe {
+                min-width: 1400px;
+                border-radius: 8px;
+            }
+        </style>
+        <div class="powerbi-wrapper">
+            <iframe 
+                title="Finance Models" 
+                width="1400" 
+                height="900" 
+                src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
+                frameborder="0" 
+                allowFullScreen="true">
+            </iframe>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    else:
+        # Fullscreen link option
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
             border-radius: 12px;
-            padding: 10px;
-            margin: 10px 0;
-        }
-    </style>
-    <div class="powerbi-container">
-        <iframe 
-            title="Finance Models" 
-            width="100%" 
-            height="900" 
-            src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9&pageName=ReportSection" 
-            frameborder="0" 
-            allowFullScreen="true">
-        </iframe>
-    </div>
-    """, unsafe_allow_html=True)
+            padding: 3rem;
+            text-align: center;
+            margin: 2rem 0;
+        ">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">📊</div>
+            <div style="font-size: 1.5rem; font-weight: 500; color: #f8fafc; margin-bottom: 0.5rem;">
+                PowerBI Dashboard
+            </div>
+            <div style="font-size: 1rem; color: #94a3b8; margin-bottom: 2rem;">
+                Click below to open the full interactive dashboard
+            </div>
+            <a href="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" target="_blank">
+                <button style="
+                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                    color: black;
+                    padding: 16px 48px;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 700;
+                    font-size: 1.1rem;
+                    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+                    transition: transform 0.2s, box-shadow 0.2s;
+                ">
+                    🚀 Open Full Dashboard
+                </button>
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.info("**Tip:** The fullscreen view provides the best experience with all filters and interactive features working perfectly.")
     
-    # Fullscreen option
+    # Always show the direct link at bottom
     st.markdown("---")
     st.markdown(
-        '<a href="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" target="_blank">'
-        '<button style="background:#f59e0b; color:black; padding:12px 24px; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size: 1rem;">🔗 Open Fullscreen Dashboard ↗</button>'
-        '</a>', 
+        '**Direct Link:** [Open PowerBI Dashboard ↗](https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9)',
         unsafe_allow_html=True
     )
-    st.caption("💡 Tip: Click the button above for the best viewing experience")
 
 # =============================================================================
 # FOOTER
