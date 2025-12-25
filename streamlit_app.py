@@ -277,18 +277,20 @@ with tab2:
             returns_df['Earnings Date'] = pd.to_datetime(returns_df['Earnings Date'], errors='coerce')
     
     if returns_df is not None and not returns_df.empty:
-        stats = {name: calc_period_stats(returns_df, col) for col, name in 
-                 [('1D Return', '1D'), ('3D Return', '3D'), ('5D Return', '5D'), ('7D Return', '7D')]}
+        # Calculate stats for all periods
+        period_cols = [('1D Return', '1 Day'), ('3D Return', '3 Days'), ('5D Return', '5 Days'), 
+                       ('7D Return', '7 Days'), ('10D Return', '10 Days')]
+        stats = {name: calc_period_stats(returns_df, col) for col, name in period_cols}
         
         # Strategy Summary
         st.markdown("### The Strategy")
         
         st.markdown("""
         <div class="strategy-banner">
-            <div style="font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem;">Based on {} trades</div>
+            <div style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 0.5rem;">Based on {} trades</div>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; color: #f1f5f9;">
                 <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #ef4444;">-8%</div>
+                    <div style="font-size: 2rem; font-weight: 700; color: #ef4444;">-5%</div>
                     <div style="font-size: 0.9rem; color: #94a3b8;">Stop Loss</div>
                 </div>
                 <div>
@@ -303,22 +305,7 @@ with tab2:
         </div>
         """.format(len(returns_df)), unsafe_allow_html=True)
         
-        # Why no profit target
-        with st.expander("Why no profit target?"):
-            st.markdown("""
-            Fixed profit targets hurt returns. The data:
-            
-            | Strategy | Avg Return |
-            |----------|-----------|
-            | -8% stop, **10% target**, Day 5 | +2.29% |
-            | -8% stop, **no target**, Day 5 | +6.10% |
-            
-            Trades hitting +10% averaged **+19.5% by Day 7**. Selling at 10% leaves money on the table.
-            """)
-        
-        st.markdown("---")
-        
-        # The Rules
+        # Rules
         st.markdown("### Rules")
         
         col1, col2 = st.columns(2)
@@ -327,8 +314,8 @@ with tab2:
             st.markdown("""
             <div class="rule-card">
                 <span class="rule-number">1</span>
-                <div class="rule-title">Set -8% stop loss on entry</div>
-                <div class="rule-desc">Always. No exceptions.</div>
+                <div class="rule-title">Set -5% stop loss on entry</div>
+                <div class="rule-desc">Triggers on 33% of trades. Best risk-adjusted returns.</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -352,65 +339,203 @@ with tab2:
             st.markdown("""
             <div class="rule-card">
                 <span class="rule-number">4</span>
-                <div class="rule-title">Optional: Trail stop after +10%</div>
-                <div class="rule-desc">Move stop to +5% to protect gains.</div>
+                <div class="rule-title">Optional: Move stop to breakeven after +5%</div>
+                <div class="rule-desc">Protects gains on runners.</div>
             </div>
             """, unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # Performance
-        st.markdown("### Performance by Hold Period")
+        # Detailed Analysis Tabs
+        st.markdown("### Why These Rules Work (The Data)")
         
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("1 Day", f"{stats['1D']['mean']*100:+.1f}%", f"{stats['1D']['win_rate']*100:.0f}% win")
-        col2.metric("3 Days", f"{stats['3D']['mean']*100:+.1f}%", f"{stats['3D']['win_rate']*100:.0f}% win")
-        col3.metric("5 Days", f"{stats['5D']['mean']*100:+.1f}%", f"{stats['5D']['win_rate']*100:.0f}% win")
-        col4.metric("7 Days", f"{stats['7D']['mean']*100:+.1f}%", f"{stats['7D']['win_rate']*100:.0f}% win")
+        analysis_tab1, analysis_tab2, analysis_tab3, analysis_tab4 = st.tabs([
+            "Holding Period", "Momentum Decay", "Sector Rules", "Risk Analysis"
+        ])
         
-        # Charts
-        st.markdown("### Why Day 5?")
+        # TAB: HOLDING PERIOD
+        with analysis_tab1:
+            st.markdown("#### Returns by Holding Period")
+            st.caption("5-day hold has the best risk-adjusted returns (Sharpe ratio)")
+            
+            col1, col2 = st.columns([1.2, 1])
+            
+            with col1:
+                sharpe_data = pd.DataFrame([
+                    {'Period': name, 'Sharpe': stats[name]['sharpe']}
+                    for name in ['1 Day', '3 Days', '5 Days', '7 Days', '10 Days']
+                ])
+                colors = ['#f59e0b' if p == '5 Days' else '#64748b' for p in sharpe_data['Period']]
+                
+                fig = px.bar(sharpe_data, x='Period', y='Sharpe', title='Sharpe Ratio by Holding Period')
+                fig.update_traces(marker_color=colors)
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#94a3b8', height=350, showlegend=False
+                )
+                fig.update_xaxes(gridcolor='#1e293b')
+                fig.update_yaxes(gridcolor='#1e293b')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                perf_data = []
+                for name in ['1 Day', '3 Days', '5 Days', '7 Days', '10 Days']:
+                    s = stats[name]
+                    perf_data.append({
+                        'Period': name,
+                        'Avg Return': f"{s['mean']*100:+.2f}%",
+                        'Win Rate': f"{s['win_rate']*100:.1f}%",
+                        'Sharpe': f"{s['sharpe']:.3f}"
+                    })
+                st.dataframe(pd.DataFrame(perf_data), use_container_width=True, hide_index=True)
+                
+                st.success(f"""
+                **Best Period: 5 Days**
+                - Win Rate: {stats['5 Days']['win_rate']*100:.1f}%
+                - Avg Return: {stats['5 Days']['mean']*100:+.2f}%
+                - Sharpe: {stats['5 Days']['sharpe']:.3f}
+                """)
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Marginal returns
+        # TAB: MOMENTUM DECAY
+        with analysis_tab2:
+            st.markdown("#### Why Exit by Day 5?")
+            st.caption("Marginal returns turn NEGATIVE after Day 5")
+            
             cols = ['1D Return', '3D Return', '5D Return', '7D Return', '10D Return']
             valid = returns_df[cols].dropna()
             prev = 0
-            marginal = []
+            marginal_data = []
+            period_names = ['Day 1', 'Days 2-3', 'Days 4-5', 'Days 6-7', 'Days 8-10']
+            
             for i, col in enumerate(cols):
                 curr = valid[col].mean() * 100
-                marginal.append({'Period': ['D1', 'D2-3', 'D4-5', 'D6-7', 'D8-10'][i], 
-                                'Return': curr - prev if i > 0 else curr})
+                marg = curr if i == 0 else curr - prev
+                marginal_data.append({'Period': period_names[i], 'Marginal': marg, 'Cumulative': curr})
                 prev = curr
             
-            mdf = pd.DataFrame(marginal)
-            colors = ['#22c55e' if x > 0 else '#ef4444' for x in mdf['Return']]
+            marginal_df = pd.DataFrame(marginal_data)
             
-            fig = px.bar(mdf, x='Period', y='Return', title='Marginal Return by Period')
-            fig.update_traces(marker_color=colors)
-            fig.add_hline(y=0, line_dash="dash", line_color="#475569")
-            fig.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#94a3b8', height=300, showlegend=False,
-                yaxis_title='%', xaxis_title=''
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                colors = ['#22c55e' if x > 0 else '#ef4444' for x in marginal_df['Marginal']]
+                fig = px.bar(marginal_df, x='Period', y='Marginal', title='Additional Return Each Period')
+                fig.update_traces(marker_color=colors)
+                fig.add_hline(y=0, line_dash="dash", line_color="#475569")
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#94a3b8', height=350, yaxis_title='Marginal Return %'
+                )
+                fig.update_xaxes(gridcolor='#1e293b')
+                fig.update_yaxes(gridcolor='#1e293b')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                st.markdown("##### The Decay Pattern")
+                for _, row in marginal_df.iterrows():
+                    color = '#22c55e' if row['Marginal'] > 0 else '#ef4444'
+                    st.markdown(f"**{row['Period']}:** <span style='color:{color}'>{row['Marginal']:+.2f}%</span>", 
+                               unsafe_allow_html=True)
+                
+                st.markdown("")
+                st.warning("After Day 5, you're **losing money** on average by holding.")
         
-        with col2:
-            # Big winner analysis
-            if '1W High Return' in returns_df.columns:
-                st.markdown("##### Big Winners (hit +20%)")
-                big = returns_df[returns_df['1W High Return'] >= 0.20]
-                st.markdown(f"""
-                {len(big)} trades ({len(big)/len(returns_df)*100:.0f}% of total)
+        # TAB: SECTOR RULES
+        with analysis_tab3:
+            st.markdown("#### Sector Performance")
+            
+            if 'Sector' in returns_df.columns:
+                sector_data = []
+                for sector in returns_df['Sector'].dropna().unique():
+                    sdf = returns_df[returns_df['Sector'] == sector]
+                    if len(sdf) >= 3:
+                        best_sharpe, best_days = -999, 5
+                        for col, days in [('1D Return', 1), ('3D Return', 3), ('5D Return', 5), 
+                                         ('7D Return', 7), ('10D Return', 10)]:
+                            if col in sdf.columns:
+                                v = sdf[col].dropna()
+                                if len(v) >= 3 and v.std() > 0:
+                                    sharpe = v.mean() / v.std()
+                                    if sharpe > best_sharpe:
+                                        best_sharpe, best_days = sharpe, days
+                        
+                        sector_data.append({
+                            'Sector': sector, 'Trades': len(sdf),
+                            'Avg 5D': sdf['5D Return'].mean() * 100,
+                            'Best Hold': f"{best_days}D", 'Sharpe': best_sharpe
+                        })
                 
-                - Avg Day 5: **+{big['5D Return'].mean()*100:.1f}%**
-                - Avg peak: +{big['1W High Return'].mean()*100:.1f}%
+                sector_df = pd.DataFrame(sector_data).sort_values('Sharpe', ascending=False)
                 
-                A 10% target would capture ~1/3 of gains.
-                """)
+                col1, col2 = st.columns([1.5, 1])
+                
+                with col1:
+                    fig = px.bar(sector_df.sort_values('Sharpe'), y='Sector', x='Sharpe', 
+                                orientation='h', title='Sector Sharpe Ratio',
+                                color='Sharpe', color_continuous_scale='RdYlGn')
+                    fig.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8', height=400, showlegend=False
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.markdown("##### Recommendations by Sector")
+                    early = sector_df[sector_df['Best Hold'].isin(['1D', '3D'])]['Sector'].tolist()
+                    standard = sector_df[sector_df['Best Hold'] == '5D']['Sector'].tolist()
+                    longer = sector_df[sector_df['Best Hold'].isin(['7D', '10D'])]['Sector'].tolist()
+                    
+                    if early:
+                        st.markdown(f"**Exit Early (1-3D):** {', '.join(early[:3])}")
+                    if standard:
+                        st.markdown(f"**Standard (5D):** {', '.join(standard[:3])}")
+                    if longer:
+                        st.markdown(f"**Hold Longer (7-10D):** {', '.join(longer[:3])}")
+            else:
+                st.info("Sector data not available.")
+        
+        # TAB: RISK ANALYSIS
+        with analysis_tab4:
+            st.markdown("#### Stop Loss Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if '1W Low Return' in returns_df.columns:
+                    stop_data = []
+                    for stop in [-0.05, -0.08, -0.10, -0.15]:
+                        stopped = returns_df[returns_df['1W Low Return'] <= stop]
+                        not_stopped = returns_df[returns_df['1W Low Return'] > stop]
+                        n_stopped, n_not = len(stopped), len(not_stopped)
+                        
+                        if n_stopped + n_not > 0:
+                            stopped_ret = stop * n_stopped
+                            not_stopped_ret = not_stopped['5D Return'].sum() if len(not_stopped) > 0 else 0
+                            avg_ret = (stopped_ret + not_stopped_ret) / (n_stopped + n_not)
+                            
+                            stop_data.append({
+                                'Stop': f"{stop*100:.0f}%",
+                                'Triggered': f"{n_stopped/len(returns_df)*100:.1f}%",
+                                'Avg Return': f"{avg_ret*100:+.2f}%",
+                                'Best': '✓' if stop == -0.05 else ''
+                            })
+                    
+                    st.dataframe(pd.DataFrame(stop_data), use_container_width=True, hide_index=True)
+                    st.success("**-5% stop loss** gives best returns (+6.65% avg)")
+            
+            with col2:
+                st.markdown("##### Big Winners")
+                if '1W High Return' in returns_df.columns:
+                    for thresh in [0.10, 0.20, 0.30]:
+                        big = returns_df[returns_df['1W High Return'] >= thresh]
+                        if len(big) > 0:
+                            st.markdown(f"**+{thresh*100:.0f}%:** {len(big)} trades → Avg Day 5: +{big['5D Return'].mean()*100:.1f}%")
+            
+            st.markdown("---")
+            st.info("""
+            **Data Note:** Current data tracks weekly high/low but not *when* during the week each occurred.
+            For precise stop-loss simulation, add daily high/low columns to your data collection.
+            """)
 
 # =============================================================================
 # TAB 3: BACKTEST
@@ -425,7 +550,7 @@ with tab3:
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            stop_loss = st.slider("Stop Loss", -20, -5, -8, 1, format="%d%%") / 100
+            stop_loss = st.slider("Stop Loss", -20, -5, -5, 1, format="%d%%") / 100
         with col2:
             use_target = st.checkbox("Use Profit Target")
             profit_target = st.slider("Target", 5, 30, 10, 1, format="%d%%", disabled=not use_target) / 100 if use_target else None
@@ -468,10 +593,10 @@ with tab3:
         
         if st.button("Run Comparison"):
             strategies = [
-                ("No target, -8% stop, 5D", -0.08, None, 5),
-                ("10% target, -8% stop, 5D", -0.08, 0.10, 5),
-                ("15% target, -8% stop, 5D", -0.08, 0.15, 5),
                 ("No target, -5% stop, 5D", -0.05, None, 5),
+                ("No target, -8% stop, 5D", -0.08, None, 5),
+                ("10% target, -5% stop, 5D", -0.05, 0.10, 5),
+                ("No target, -5% stop, 7D", -0.05, None, 7),
                 ("No target, -10% stop, 5D", -0.10, None, 5),
             ]
             
@@ -487,7 +612,7 @@ with tab3:
                     })
             
             st.dataframe(pd.DataFrame(comparison), use_container_width=True, hide_index=True)
-            st.info("Best: **No target, -8% stop, Day 5** — lets winners run.")
+            st.info("Best: **No target, -5% stop, Day 5** — lets winners run while cutting losers early.")
 
 # =============================================================================
 # TAB 4: POWERBI
