@@ -1,0 +1,179 @@
+Ticker,Quarter,Price,EPS (TTM),P/E,Forward P/E,Market Cap,Beta,Earnings Raw,Earnings Date,Company Name,Sector
+TGS,Q3,29.69,2.26,13.15,12.76,2060000000.0,0.78,Nov 03 AMC,2025-11-03,Transportadora de Gas del Sur S.A.,Energy
+RYAAY,Q3,64.6,4.2,15.38,11.85,34110000000.0,1.26,Nov 03 BMO,2025-11-03,Ryanair Holdings plc,Industrials
+QRVO,Q3,87.54,2.32,37.8,12.38,8090000000.0,1.36,Nov 03 AMC,2025-11-03,"Qorvo, Inc.",Technology
+NOVT,Q3,129.33,1.46,88.42,34.24,4650000000.0,1.58,Nov 03 AMC,2025-11-03,Novanta Inc.,Technology
+IDXX,Q3,722.12,12.61,57.24,50.26,57770000000.0,1.67,Nov 03 BMO,2025-11-03,"IDEXX Laboratories, Inc.",Healthcare
+HLIO,Q3,55.47,1.01,54.67,19.95,1840000000.0,1.3,Nov 03 AMC,2025-11-03,"Helios Technologies, Inc.",Industrials
+PCH,Q3,41.4,0.82,50.6,60.88,3200000000.0,1.11,Nov 03 AMC,2025-11-03,PotlatchDeltic Corporation,Real Estate
+UFPT,Q3,226.11,8.63,26.2,21.51,1740000000.0,1.07,Nov 03 AMC,2025-11-03,"UFP Technologies, Inc.",Healthcare
+CTRA,Q3,26.57,2.17,12.26,9.73,20230000000.0,0.31,Nov 03 AMC,2025-11-03,Coterra Energy Inc.,Energy
+FLYW,Q3,13.56,-0.03,,42.86,1660000000.0,1.28,Nov 04 AMC,2025-11-04,Flywire Corporation,Technology
+AUPH,Q3,14.61,0.56,26.04,15.63,1930000000.0,1.44,Nov 04 BMO,2025-11-04,Aurinia Pharmaceuticals Inc.,Healthcare
+UFCS,Q3,35.33,4.24,8.33,10.55,901420000.0,0.44,Nov 04 AMC,2025-11-04,"United Fire Group, Inc.",Financial Services
+MAR,Q3,291.16,9.47,30.75,25.77,78130000000.0,1.15,Nov 04 BMO,2025-11-04,"Marriott International, Inc.",Consumer Cyclical
+BVS,Q3,7.45,0.11,66.34,10.35,616590000.0,0.77,Nov 04 BMO,2025-11-04,Bioventus Inc.,Healthcare
+HG,Q3,26.08,4.39,5.95,6.24,2570000000.0,0.66,Nov 04 AMC,2025-11-04,"Hamilton Insurance Group, Ltd.",Financial Services
+BLD,Q3,418.84,20.3,20.64,19.34,11790000000.0,1.68,Nov 04 BMO,2025-11-04,TopBuild Corp.,Industrials
+MDGL,Q3,489.26,-13.01,,134.8,11110000000.0,-1.03,Nov 04 BMO,2025-11-04,"Madrigal Pharmaceuticals, Inc.",Healthcare
+MPLX,Q3,51.27,4.72,10.87,11.39,52140000000.0,0.54,Nov 04 BMO,2025-11-04,MPLX LP,Energy
+EXPD,Q3,137.43,6.14,22.37,23.23,18420000000.0,1.13,Nov 04 BMO,2025-11-04,"Expeditors International of Washington, Inc.",Industrials
+CLOV,Q3,3.52,-0.09,,83.79,1800000000.0,2.22,Nov 04 AMC,2025-11-04,"Clover Health Investments, Corp.",Healthcare
+TDC,Q3,27.6,1.22,22.6,11.05,2570000000.0,0.52,Nov 04 AMC,2025-11-04,Teradata Corporation,Technology
+AVNW,Q3,24.21,0.09,266.04,7.45,309940000.0,0.91,Nov 04 AMC,2025-11-04,"Aviat Networks, Inc.",Technology
+BHE,Q3,43.0,1.05,41.01,16.91,1540000000.0,1.05,Nov 04 AMC,2025-11-04,"Benchmark Electronics, Inc.",Technology
+KGS,Q3,36.27,0.89,40.78,15.92,3140000000.0,1.22,Nov 04 AMC,2025-11-04,"Kodiak Gas Services, Inc.",Energy
+CPRI,Q3,20.71,-9.41,,11.65,2470000000.0,1.5,Nov 04 BMO,2025-11-04,Capri Holdings Limited,Consumer Cyclical
+PAM,Q3,87.48,8.54,10.24,9.88,4760000000.0,1.14,Nov 04 BMO,2025-11-04,Pampa Energía S.A.,Utilities
+MEC,Q3,17.99,0.85,21.26,31.15,365510000.0,1.12,Nov 04 AMC,2025-11-04,"Mayville Engineering Company, Inc.",Industrials
+FWRG,Q3,17.6,0.07,269.11,47.34,1070000000.0,0.88,Nov 04 BMO,2025-11-04,"First Watch Restaurant Group, Inc.",Consumer Cyclical
+OUST,Q3,27.68,-1.81,,,1600000000.0,2.97,Nov 04 AMC,2025-11-04,"Ouster, Inc.",Technology
+OFIX,Q3,14.87,-3.18,,,587280000.0,0.82,Nov 04 BMO,2025-11-04,Orthofix Medical Inc.,Healthcare
+DAVE,Q3,234.58,3.79,61.96,23.65,3170000000.0,3.9,Nov 04 BMO,2025-11-04,Dave Inc.,Technology
+AHCO,Q3,10.67,0.53,19.95,9.62,1440000000.0,1.78,Nov 04 BMO,2025-11-04,AdaptHealth Corp.,Healthcare
+VTOL,Q3,41.27,4.0,10.32,8.18,1190000000.0,1.41,Nov 04 AMC,2025-11-04,Bristow Group Inc.,Energy
+SHC,Q3,16.43,0.08,196.3,18.45,4670000000.0,1.82,Nov 04 BMO,2025-11-04,Sotera Health Company,Healthcare
+PHG,Q3,28.02,-0.82,,16.12,26630000000.0,0.79,Nov 04 BMO,2025-11-04,Koninklijke Philips N.V.,Healthcare
+IBP,Q3,257.76,9.29,27.75,23.44,6990000000.0,1.9,Nov 05 BMO,2025-11-05,"Installed Building Products, Inc.",Consumer Cyclical
+EFC,Q3,13.69,1.21,11.29,7.64,1370000000.0,0.94,Nov 05 AMC,2025-11-05,Ellington Financial Inc.,Real Estate
+TRUE,Q3,2.19,-0.21,,,194780000.0,2.2,Nov 05 AMC,2025-11-05,"TrueCar, Inc.",Communication Services
+PKST,Q3,14.95,-8.79,,15.29,550020000.0,1.7,Nov 05 AMC,2025-11-05,Peakstone Realty Trust,Real Estate
+RPRX,Q3,37.84,2.3,16.47,7.97,22070000000.0,0.47,Nov 05 BMO,2025-11-05,Royalty Pharma plc,Healthcare
+BORR,Q3,3.18,0.25,12.74,,909080000.0,1.11,Nov 05 AMC,2025-11-05,Borr Drilling Limited,Energy
+CTRE,Q3,36.15,1.34,26.94,22.85,8070000000.0,0.78,Nov 05 AMC,2025-11-05,"CareTrust REIT, Inc.",Real Estate
+LMND,Q3,75.02,-2.38,,,5610000000.0,2.08,Nov 05 BMO,2025-11-05,"Lemonade, Inc.",Financial Services
+ITUB,Q3,7.57,0.7,10.82,8.79,40350000000.0,0.64,Nov 05 BMO,2025-11-05,Itaú Unibanco Holding S.A.,Financial Services
+LILAK,Q3,7.95,-3.7,,28.35,1590000000.0,0.97,Nov 05 AMC,2025-11-05,Liberty Latin America Ltd.,Communication Services
+GPRK,Q3,8.2,0.65,12.63,7.8,420740000.0,0.53,Nov 05 AMC,2025-11-05,GeoPark Limited,Energy
+LILA,Q3,7.86,-3.7,,42.69,1590000000.0,0.99,Nov 05 AMC,2025-11-05,Liberty Latin America Ltd.,Communication Services
+ECPG,Q3,47.31,-1.83,,5.1,1060000000.0,1.46,Nov 05 AMC,2025-11-05,"Encore Capital Group, Inc.",Financial Services
+FSLY,Q3,11.56,-0.96,,104.41,1700000000.0,0.92,Nov 05 AMC,2025-11-05,"Fastly, Inc.",Technology
+EMR,Q3,137.74,4.66,29.59,20.99,77520000000.0,1.25,Nov 05 BMO,2025-11-05,Emerson Electric Co.,Industrials
+HUM,Q3,281.87,13.03,21.63,20.81,33900000000.0,0.45,Nov 05 BMO,2025-11-05,Humana Inc.,Healthcare
+ALTO,Q3,1.38,-0.7,,,106810000.0,0.55,Nov 05 AMC,2025-11-05,"Alto Ingredients, Inc.",Basic Materials
+DBD,Q3,64.5,1.36,47.28,11.61,2310000000.0,1.48,Nov 05 BMO,2025-11-05,"Diebold Nixdorf, Incorporated",Technology
+MTRX,Q3,15.27,-1.06,,16.6,428610000.0,0.94,Nov 05 AMC,2025-11-05,Matrix Service Company,Industrials
+BRLT,Q3,2.56,-0.28,,23.49,255360000.0,1.39,Nov 05 BMO,2025-11-05,"Brilliant Earth Group, Inc.",Consumer Cyclical
+CTKB,Q3,3.91,-0.05,,,497440000.0,1.33,Nov 05 AMC,2025-11-05,"Cytek Biosciences, Inc.",Healthcare
+TM,Q3,203.89,21.69,9.4,9.87,265740000000.0,0.69,Nov 05 BMO,2025-11-05,Toyota Motor Corporation,Consumer Cyclical
+XFOR,Q3,3.71,-10.01,,,324390000.0,0.44,Nov 05 BMO,2025-11-05,"X4 Pharmaceuticals, Inc.",Healthcare
+TBLA,Q3,3.79,0.07,52.13,30.15,1090000000.0,1.29,Nov 05 BMO,2025-11-05,Taboola.com Ltd.,Communication Services
+XPEL,Q3,34.98,1.76,19.92,16.74,967990000.0,1.38,Nov 05 BMO,2025-11-05,"XPEL, Inc.",Consumer Cyclical
+DIOD,Q3,50.88,1.37,37.14,22.69,2360000000.0,1.64,Nov 06 AMC,2025-11-06,Diodes Incorporated,Technology
+BL,Q3,53.58,1.1,48.92,22.77,3320000000.0,0.87,Nov 06 AMC,2025-11-06,"BlackLine, Inc.",Technology
+AORT,Q3,45.76,-0.43,,115.22,2160000000.0,1.6,Nov 06 AMC,2025-11-06,"Artivion, Inc.",Healthcare
+PH,Q3,844.01,28.07,30.07,25.85,106800000000.0,1.23,Nov 06 BMO,2025-11-06,Parker-Hannifin Corporation,Industrials
+MODG,Q3,10.6,-8.13,,,1950000000.0,0.97,Nov 06 AMC,2025-11-06,Topgolf Callaway Brands Corp.,Consumer Cyclical
+MSC,Q3,3.78,-0.36,,,727990000.0,-0.14,Nov 06 BMO,2025-11-06,Studio City International Holdings Limited,Consumer Cyclical
+TXG,Q3,15.25,-0.62,,,1900000000.0,2.17,Nov 06 AMC,2025-11-06,"10x Genomics, Inc.",Healthcare
+AHR,Q3,45.98,-0.22,,57.61,7840000000.0,1.0,Nov 06 AMC,2025-11-06,"American Healthcare REIT, Inc.",Real Estate
+URGN,Q3,23.24,-3.46,,,1090000000.0,1.22,Nov 06 BMO,2025-11-06,UroGen Pharma Ltd.,Healthcare
+TBCH,Q3,16.29,0.94,17.38,13.29,322650000.0,2.16,Nov 06 AMC,2025-11-06,Turtle Beach Corporation,Technology
+RLYB,Q3,0.63,-0.32,,,26420000.0,-1.02,Nov 06 BMO,2025-11-06,Rallybio Corporation,Healthcare
+INSW,Q3,49.2,4.81,10.23,7.92,2430000000.0,-0.19,Nov 06 BMO,2025-11-06,"International Seaways, Inc.",Energy
+SYNA,Q3,66.08,-1.17,,12.42,2580000000.0,1.76,Nov 06 AMC,2025-11-06,Synaptics Incorporated,Technology
+GMED,Q3,61.66,2.59,23.8,16.92,8330000000.0,1.12,Nov 06 AMC,2025-11-06,"Globus Medical, Inc.",Healthcare
+XYZ,Q3,72.58,4.67,15.53,20.45,44240000000.0,2.65,Nov 06 AMC,2025-11-06,"Block, Inc.",Technology
+SGHT,Q3,4.98,-0.96,,,260790000.0,2.46,Nov 06 AMC,2025-11-06,"Sight Sciences, Inc.",Healthcare
+TCX,Q3,18.67,-8.67,,,206840000.0,1.0,Nov 06 AMC,2025-11-06,Tucows Inc.,Technology
+VTRS,Q3,10.49,-2.91,,4.29,12110000000.0,0.83,Nov 06 BMO,2025-11-06,Viatris Inc.,Healthcare
+HAE,Q3,68.36,3.43,19.94,12.48,3200000000.0,0.27,Nov 06 BMO,2025-11-06,Haemonetics Corporation,Healthcare
+PLUS,Q3,73.31,4.3,17.06,16.2,1950000000.0,1.03,Nov 06 AMC,2025-11-06,ePlus inc.,Technology
+INTS,Q3,0.46,-0.63,,,27340000.0,4.29,Nov 06 AMC,2025-11-06,"Intensity Therapeutics, Inc.",Healthcare
+ARLO,Q3,17.75,-0.07,,22.55,1850000000.0,1.71,Nov 06 AMC,2025-11-06,"Arlo Technologies, Inc.",Industrials
+GHRS,Q3,13.5,-0.73,,,837380000.0,0.99,Nov 06 BMO,2025-11-06,GH Research PLC,Healthcare
+HBIO,Q3,0.54,-1.22,,5.72,24210000.0,1.55,Nov 06 BMO,2025-11-06,"Harvard Bioscience, Inc.",Healthcare
+BIRD,Q3,8.14,-10.55,,,66310000.0,1.93,Nov 06 AMC,2025-11-06,"Allbirds, Inc.",Consumer Cyclical
+LOMA,Q3,10.8,0.56,19.28,13.16,1260000000.0,0.83,Nov 06 AMC,2025-11-06,Loma Negra Compañía Industrial Argentina Sociedad Anónima,Basic Materials
+EXPE,Q3,258.25,10.46,24.68,14.63,31950000000.0,1.45,Nov 06 AMC,2025-11-06,"Expedia Group, Inc.",Consumer Cyclical
+TFX,Q3,124.41,4.25,29.29,8.28,5500000000.0,0.94,Nov 06 BMO,2025-11-06,Teleflex Incorporated,Healthcare
+ATHA,Q3,3.85,-9.66,,,15180000.0,2.95,Nov 06 AMC,2025-11-06,"Athira Pharma, Inc.",Healthcare
+DIBS,Q3,3.55,-0.55,,,128680000.0,1.11,Nov 07 BMO,2025-11-07,"1stdibs.Com, Inc.",Consumer Cyclical
+TDS,Q3,39.37,-0.95,,,4250000000.0,0.32,Nov 07 BMO,2025-11-07,"Telephone and Data Systems, Inc.",Communication Services
+AXL,Q3,6.55,0.34,19.03,11.72,777250000.0,1.57,Nov 07 BMO,2025-11-07,"American Axle & Manufacturing Holdings, Inc.",Consumer Cyclical
+CTEV,Q3,62.87,-40.96,,,1040000000.0,0.51,Nov 07 BMO,2025-11-07,Claritev Corporation,Healthcare
+ATMU,Q3,47.9,2.26,21.17,17.44,3940000000.0,1.59,Nov 07 BMO,2025-11-07,Atmus Filtration Technologies Inc.,Consumer Cyclical
+YPF,Q3,36.26,3.12,11.63,8.94,14260000000.0,1.43,Nov 07 AMC,2025-11-07,YPF Sociedad Anónima,Energy
+BHF,Q3,66.01,14.67,4.5,3.09,3770000000.0,0.94,Nov 07 BMO,2025-11-07,"Brighthouse Financial, Inc.",Financial Services
+GSL,Q3,34.51,11.13,3.1,3.37,1230000000.0,0.95,Nov 10 BMO,2025-11-10,"Global Ship Lease, Inc.",Industrials
+SIBN,Q3,18.62,-0.51,,,803280000.0,0.78,Nov 10 AMC,2025-11-10,"SI-BONE, Inc.",Healthcare
+SNDA,Q3,31.93,-2.87,,,601020000.0,0.59,Nov 10 BMO,2025-11-10,"Sonida Senior Living, Inc.",Healthcare
+BKV,Q3,27.5,0.52,53.11,12.43,2330000000.0,1.61,Nov 10 BMO,2025-11-10,BKV Corporation,Energy
+RNGR,Q3,13.77,0.66,21.01,14.64,297620000.0,0.16,Nov 10 BMO,2025-11-10,"Ranger Energy Services, Inc.",Energy
+KLTR,Q3,1.93,-0.12,,34.49,298150000.0,1.06,Nov 10 AMC,2025-11-10,"Kaltura, Inc.",Technology
+GRDN,Q3,32.45,0.64,50.98,30.69,2050000000.0,0.94,Nov 10 AMC,2025-11-10,"Guardian Pharmacy Services, Inc.",Healthcare
+HHH,Q3,85.93,5.14,16.73,19.82,5100000000.0,1.2,Nov 10 BMO,2025-11-10,Howard Hughes Holdings Inc.,Real Estate
+VOD,Q3,12.71,-1.79,,11.07,30330000000.0,0.41,Nov 11 BMO,2025-11-11,Vodafone Group Public Limited Company,Communication Services
+ELMD,Q3,25.27,0.93,27.19,20.14,210770000.0,0.25,Nov 12 AMC,2025-11-12,"Electromed, Inc.",Healthcare
+AVIR,Q3,3.38,-1.61,,,267830000.0,0.15,Nov 12 AMC,2025-11-12,"Atea Pharmaceuticals, Inc.",Healthcare
+KRMD,Q3,4.32,-0.08,,,200110000.0,0.59,Nov 12 AMC,2025-11-12,"KORU Medical Systems, Inc.",Healthcare
+PYPD,Q3,3.71,-3.83,,,59060000.0,1.5,Nov 12 BMO,2025-11-12,PolyPid Ltd.,Healthcare
+ALTI,Q3,3.89,-1.67,,14.41,566900000.0,0.72,Nov 12 AMC,2025-11-12,"AlTi Global, Inc.",Financial Services
+FLNG,Q3,26.6,1.83,14.51,12.46,1410000000.0,0.31,Nov 12 BMO,2025-11-12,FLEX LNG Ltd.,Energy
+PGEN,Q3,3.92,-0.43,,,1170000000.0,1.16,Nov 13 AMC,2025-11-13,"Precigen, Inc.",Healthcare
+BN,Q3,46.56,0.29,162.02,16.27,115250000000.0,1.59,Nov 13 BMO,2025-11-13,Brookfield Corporation,Financial Services
+SHIP,Q3,9.37,0.73,12.88,4.65,195860000.0,0.77,Nov 13 BMO,2025-11-13,Seanergy Maritime Holdings Corp,Industrials
+EVOK,Q3,10.69,-2.38,,15.72,18410000.0,-0.29,Nov 13 BMO,2025-11-13,"Evoke Pharma, Inc.",Healthcare
+GRCE,Q3,3.06,-0.58,,,43230000.0,0.6,Nov 13 BMO,2025-11-13,"Grace Therapeutics, Inc.",Healthcare
+PTHS,Q3,32.81,-17.31,,,100660000.0,4.0,Nov 13 BMO,2025-11-13,Pelthos Therapeutics Inc.,Healthcare
+EC,Q3,10.13,1.44,7.03,8.17,20830000000.0,0.78,Nov 13 AMC,2025-11-13,Ecopetrol S.A.,Energy
+SPB,Q3,57.12,3.95,14.44,11.43,1380000000.0,0.7,Nov 13 BMO,2025-11-13,"Spectrum Brands Holdings, Inc.",Consumer Defensive
+MNOV,Q3,1.55,-0.24,,,76020000.0,0.48,Nov 13 BMO,2025-11-13,"MediciNova, Inc.",Healthcare
+MFG,Q3,7.05,0.47,14.92,11.23,87260000000.0,0.39,Nov 14 AMC,2025-11-14,"Mizuho Financial Group, Inc.",Financial Services
+VENU,Q3,11.82,-1.04,,18.66,514950000.0,3.2,Nov 14 AMC,2025-11-14,Venu Holding Corporation,Consumer Cyclical
+FRGE,Q3,44.64,-5.06,,,607170000.0,2.16,Nov 14 BMO,2025-11-14,"Forge Global Holdings, Inc.",Financial Services
+CIG,Q3,2.11,0.4,5.25,7.79,4020000000.0,0.89,Nov 14 BMO,2025-11-14,Companhia Energética de Minas Gerais - CEMIG,Utilities
+XP,Q3,18.57,1.59,11.66,9.43,9780000000.0,1.16,Nov 17 AMC,2025-11-17,XP Inc.,Financial Services
+DAC,Q3,95.44,24.25,3.94,3.5,1750000000.0,1.15,Nov 17 AMC,2025-11-17,Danaos Corporation,Industrials
+JKS,Q3,29.11,-5.03,,6.14,1460000000.0,0.43,Nov 17 BMO,2025-11-17,"JinkoSolar Holding Co., Ltd.",Technology
+LTM,Q3,46.49,4.15,11.19,9.65,13350000000.0,3.85,Nov 17 BMO,2025-11-17,LATAM Airlines Group S.A.,Industrials
+NMM,Q3,54.22,10.03,5.41,3.74,1570000000.0,1.42,Nov 18 BMO,2025-11-18,Navios Maritime Partners L.P.,Industrials
+SBLK,Q3,18.98,0.52,36.29,6.35,2170000000.0,0.76,Nov 18 AMC,2025-11-18,Star Bulk Carriers Corp.,Industrials
+FUTU,Q3,168.83,7.22,23.38,16.6,16000000000.0,0.22,Nov 18 BMO,2025-11-18,Futu Holdings Limited,Financial Services
+NTIC,Q3,8.1,0.3,26.96,28.93,76740000.0,0.18,Nov 18 BMO,2025-11-18,Northern Technologies International Corporation,Basic Materials
+VREX,Q3,11.83,-3.24,,14.7,490940000.0,0.85,Nov 18 AMC,2025-11-18,Varex Imaging Corporation,Healthcare
+LUXE,Q3,9.39,4.88,1.92,,1290000000.0,1.11,Nov 19 BMO,2025-11-19,LuxExperience B.V.,Consumer Cyclical
+PACS,Q3,26.44,0.44,60.1,12.13,4100000000.0,-0.04,Nov 19 AMC,2025-11-19,"PACS Group, Inc.",Healthcare
+JOYY,Q3,58.29,-2.21,,11.06,2040000000.0,0.37,Nov 19 AMC,2025-11-19,JOYY Inc.,Communication Services
+GLBE,Q3,35.18,-0.17,,37.86,5960000000.0,1.25,Nov 19 BMO,2025-11-19,Global-E Online Ltd.,Consumer Cyclical
+ZIM,Q3,17.3,16.63,1.04,,2080000000.0,1.64,Nov 20 BMO,2025-11-20,ZIM Integrated Shipping Services Ltd.,Industrials
+UGI,Q3,34.95,1.9,18.42,10.8,7510000000.0,1.07,Nov 20 AMC,2025-11-20,UGI Corporation,Utilities
+ESTC,Q3,89.7,-0.8,,33.2,9530000000.0,0.94,Nov 20 AMC,2025-11-20,Elastic N.V.,Technology
+GAP,Q3,24.25,2.33,10.42,11.08,9000000000.0,2.25,Nov 20 AMC,2025-11-20,"The Gap, Inc.",Consumer Cyclical
+VFS,Q3,3.51,-1.37,,,8200000000.0,1.1,Nov 21 BMO,2025-11-21,VinFast Auto Ltd.,Consumer Cyclical
+ZM,Q3,78.63,3.8,20.71,13.25,23530000000.0,0.82,Nov 24 AMC,2025-11-24,Zoom Communications Inc.,Technology
+AMTM,Q3,29.42,0.27,108.32,10.82,7160000000.0,-0.31,Nov 24 AMC,2025-11-24,"Amentum Holdings, Inc.",Industrials
+WALD,Q3,3.08,-0.38,,,377980000.0,-0.69,Nov 24 AMC,2025-11-24,Waldencast plc,Consumer Defensive
+TITN,Q3,18.52,-2.72,,,432860000.0,1.24,Nov 25 BMO,2025-11-25,Titan Machinery Inc.,Industrials
+KSS,Q3,15.71,1.83,8.58,22.39,1760000000.0,1.52,Nov 25 BMO,2025-11-25,Kohl's Corporation,Consumer Cyclical
+GASS,Q3,6.78,1.71,3.97,5.34,250720000.0,0.26,Nov 25 BMO,2025-11-25,StealthGas Inc.,Industrials
+MOV,Q3,20.94,0.97,21.49,,328390000.0,0.91,Nov 25 BMO,2025-11-25,"Movado Group, Inc.",Consumer Cyclical
+CMBT,Q3,10.05,1.23,8.16,6.37,2920000000.0,0.02,Nov 26 BMO,2025-11-26,Cmb.Tech NV,Energy
+AEO,Q3,20.4,1.04,19.64,14.2,3450000000.0,1.42,Dec 02 AMC,2025-12-02,"American Eagle Outfitters, Inc.",Consumer Cyclical
+FIVE,Q3,173.2,5.57,31.1,27.86,9550000000.0,1.15,Dec 03 AMC,2025-12-03,"Five Below, Inc.",Consumer Cyclical
+SCLX,Q3,19.15,-33.08,,6.16,145260000.0,1.34,Dec 03,2025-12-03,Scilex Holding Company,Healthcare
+DOOO,Q3,76.66,0.24,324.28,17.77,5610000000.0,1.24,Dec 04 BMO,2025-12-04,BRP Inc.,Consumer Cyclical
+GCO,Q3,35.85,-2.45,,16.18,387020000.0,1.75,Dec 04 BMO,2025-12-04,Genesco Inc.,Consumer Cyclical
+DG,Q3,132.37,5.79,22.86,18.7,29140000000.0,0.27,Dec 04 BMO,2025-12-04,Dollar General Corporation,Consumer Defensive
+MAMA,Q3,13.33,0.12,114.03,58.46,541910000.0,0.81,Dec 08 AMC,2025-12-08,"Mama's Creations, Inc.",Consumer Defensive
+TOL,Q3,139.15,13.56,10.26,9.63,13410000000.0,1.42,Dec 08 AMC,2025-12-08,"Toll Brothers, Inc.",Consumer Cyclical
+CMP,Q3,20.22,-2.91,,35.44,842950000.0,1.18,Dec 08 AMC,2025-12-08,"Compass Minerals International, Inc.",Basic Materials
+YEXT,Q3,8.31,-0.01,,14.01,1020000000.0,0.96,Dec 08 AMC,2025-12-08,"Yext, Inc.",Technology
+BRZE,Q3,33.14,-1.1,,52.22,3720000000.0,1.1,Dec 09 AMC,2025-12-09,"Braze, Inc.",Technology
+CASY,Q3,540.07,16.26,33.21,28.62,20020000000.0,0.67,Dec 09 AMC,2025-12-09,"Casey's General Stores, Inc.",Consumer Cyclical
+ASYS,Q3,10.98,-2.12,,,157640000.0,1.7,Dec 10 AMC,2025-12-10,"Amtech Systems, Inc.",Technology
+VBNK,Q3,14.46,0.65,22.34,6.87,465180000.0,0.91,Dec 10 BMO,2025-12-10,VersaBank,Financial Services
+PLAB,Q3,36.31,2.29,15.83,15.72,2140000000.0,1.54,Dec 10 BMO,2025-12-10,"Photronics, Inc.",Technology
+VZLA,Q3,5.18,-0.04,,,1780000000.0,1.22,Dec 11 AMC,2025-12-11,Vizsla Silver Corp.,Basic Materials
+HOFT,Q3,10.76,-1.22,,9.12,115670000.0,1.41,Dec 11 BMO,2025-12-11,Hooker Furnishings Corporation,Consumer Cyclical
+RENT,Q3,6.65,-1.21,,,222050000.0,1.35,Dec 12 BMO,2025-12-12,"Rent the Runway, Inc.",Consumer Cyclical
+QIPT,Q3,3.52,-0.25,,,154990000.0,0.42,Dec 15 BMO,2025-12-15,Quipt Home Medical Corp.,Healthcare
+CSPI,Q3,13.41,-0.01,,,132820000.0,0.66,Dec 16 BMO,2025-12-16,CSP Inc.,Technology
+OGI,Q3,2.01,-0.16,,38.45,271350000.0,1.47,Dec 16 BMO,2025-12-16,Organigram Global Inc.,Healthcare
+JBL,Q3,226.62,6.43,35.24,16.89,24210000000.0,1.25,Dec 17 BMO,2025-12-17,Jabil Inc.,Technology
+MLKN,Q3,18.17,-0.39,,8.12,1240000000.0,1.29,Dec 17 AMC,2025-12-17,"MillerKnoll, Inc.",Consumer Cyclical
+ABM,Q3,48.25,2.59,18.66,10.84,2950000000.0,0.71,Dec 17 BMO,2025-12-17,ABM Industries Incorporated,Industrials
+ISSC,Q3,16.61,0.87,19.06,24.79,292940000.0,0.67,Dec 18 BMO,2025-12-18,"Innovative Aerosystems, Inc.",Industrials
+KBH,Q3,62.75,6.16,10.19,9.93,4060000000.0,1.42,Dec 18 AMC,2025-12-18,KB Home,Consumer Cyclical
+OCC,Q3,4.97,-0.19,,,44080000.0,0.6,Dec 18 BMO,2025-12-18,Optical Cable Corporation,Technology
+EBF,Q3,18.08,1.66,10.92,11.3,463390000.0,0.36,Dec 22 BMO,2025-12-22,"Ennis, Inc.",Industrials
