@@ -185,21 +185,42 @@ def earnings_sort_key(row):
 
 @st.cache_data(ttl=3600)
 def load_returns_data():
-    """Load returns tracker data from GitHub or local file"""
-    try:
-        # Try loading from GitHub raw URL (update with your actual path)
-        url = "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/returns_tracker.csv"
-        df = pd.read_csv(url)
-        df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
-        return df
-    except:
-        # Fallback to local file
+    """Load returns tracker data from multiple possible sources"""
+    
+    # List of possible GitHub raw URLs to try
+    github_urls = [
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/returns_tracker.csv",
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/data/returns_tracker.csv",
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/returns_tracker.csv",
+    ]
+    
+    # Try GitHub URLs first
+    for url in github_urls:
         try:
-            df = pd.read_csv('returns_tracker.csv')
-            df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
-            return df
+            df = pd.read_csv(url)
+            if not df.empty and '1D Return' in df.columns:
+                df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
+                return df
         except:
-            return None
+            continue
+    
+    # Fallback to local files
+    local_paths = [
+        'returns_tracker.csv',
+        'data/returns_tracker.csv',
+        './returns_tracker.csv',
+    ]
+    
+    for path in local_paths:
+        try:
+            df = pd.read_csv(path)
+            if not df.empty and '1D Return' in df.columns:
+                df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
+                return df
+        except:
+            continue
+    
+    return None
 
 def calc_period_stats(df, col):
     """Calculate statistics for a return period"""
@@ -269,9 +290,37 @@ with tab2:
     returns_df = load_returns_data()
     
     if returns_df is None or returns_df.empty:
-        st.warning("⚠️ Returns data not found. Please upload returns_tracker.csv to your GitHub repo.")
-        st.info("The Exit Strategy tab analyzes historical trade performance to determine optimal sell timing.")
-    else:
+        st.warning("⚠️ Returns data not found.")
+        
+        st.markdown("""
+        ### 📁 How to enable Exit Strategy analytics:
+        
+        **Upload `returns_tracker.csv` to your GitHub repo:**
+        
+        1. Go to your [GitHub repo](https://github.com/TylerGrossi/Scrapper)
+        2. Click **Add file** → **Upload files**
+        3. Upload your `returns_tracker.csv` file
+        4. Commit the changes
+        5. Refresh this page (may take 1-2 minutes for cache to update)
+        
+        **Required columns in your CSV:**
+        - `Ticker`, `Earnings Date`
+        - `1D Return`, `3D Return`, `5D Return`, `7D Return`, `10D Return`
+        - `1W High Return`, `1W Low Return` (for risk analysis)
+        - `Sector` (optional, for sector breakdown)
+        """)
+        
+        # Allow manual file upload as fallback
+        st.markdown("---")
+        st.markdown("**Or upload directly here:**")
+        uploaded_file = st.file_uploader("Upload returns_tracker.csv", type=['csv'])
+        
+        if uploaded_file is not None:
+            returns_df = pd.read_csv(uploaded_file)
+            returns_df['Earnings Date'] = pd.to_datetime(returns_df['Earnings Date'], errors='coerce')
+            st.success(f"✅ Loaded {len(returns_df)} trades from uploaded file!")
+    
+    if returns_df is not None and not returns_df.empty:
         # Header
         st.markdown("""
         <div class="exit-header">
@@ -619,29 +668,37 @@ with tab3:
     st.markdown("### 📈 PowerBI Dashboard")
     st.caption("Interactive returns tracking and performance analytics")
     
-    # Embed the PowerBI dashboard directly
+    # Add some spacing and better container
     st.markdown("""
-    <iframe 
-        title="Finance Models" 
-        width="100%" 
-        height="800" 
-        src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
-        frameborder="0" 
-        allowFullScreen="true"
-        style="border: 1px solid #334155; border-radius: 8px;">
-    </iframe>
+    <style>
+        .powerbi-container {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+    </style>
+    <div class="powerbi-container">
+        <iframe 
+            title="Finance Models" 
+            width="100%" 
+            height="900" 
+            src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9&pageName=ReportSection" 
+            frameborder="0" 
+            allowFullScreen="true">
+        </iframe>
+    </div>
     """, unsafe_allow_html=True)
     
     # Fullscreen option
     st.markdown("---")
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        st.markdown(
-            '<a href="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" target="_blank">'
-            '<button style="background:#f59e0b; color:black; padding:10px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Open Fullscreen ↗</button>'
-            '</a>', 
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        '<a href="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" target="_blank">'
+        '<button style="background:#f59e0b; color:black; padding:12px 24px; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size: 1rem;">🔗 Open Fullscreen Dashboard ↗</button>'
+        '</a>', 
+        unsafe_allow_html=True
+    )
+    st.caption("💡 Tip: Click the button above for the best viewing experience")
 
 # =============================================================================
 # FOOTER
