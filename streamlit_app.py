@@ -495,29 +495,45 @@ with tab3:
 with tab4:
     st.markdown("### PowerBI Dashboard")
     
-    view = st.radio("", ["Embedded", "New Tab"], horizontal=True, label_visibility="collapsed")
+    # Direct link always visible at top
+    st.markdown(
+        '[Open in Full Screen ↗](https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9)',
+        unsafe_allow_html=True
+    )
     
-    if view == "Embedded":
-        st.markdown("""
-        <div style="background: #0f172a; border-radius: 8px; padding: 8px; border: 1px solid #334155; overflow-x: auto;">
-            <iframe 
-                title="Finance Models" 
-                width="1400" height="850"
-                src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
-                frameborder="0" allowFullScreen="true">
-            </iframe>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="text-align: center; padding: 3rem; background: #1e293b; border-radius: 8px;">
-            <a href="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" target="_blank">
-                <button style="background: #3b82f6; color: white; border: none; padding: 12px 32px; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                    Open Dashboard →
-                </button>
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Responsive iframe that maintains aspect ratio (1300x720 = ~1.8:1)
+    st.markdown("""
+    <style>
+        .powerbi-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 55.4%; /* 720/1300 = 0.554 */
+            height: 0;
+            overflow: hidden;
+            background: #0f172a;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .powerbi-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+        }
+    </style>
+    <div class="powerbi-container">
+        <iframe 
+            title="Finance Models"
+            src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
+            allowFullScreen="true">
+        </iframe>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 st.caption("Earnings Momentum Strategy")
