@@ -4,3 +4,4 @@ numpy==1.26.3
 plotly==5.18.0
 requests==2.31.0
 beautifulsoup4==4.12.3
+yfinance==0.2.36
