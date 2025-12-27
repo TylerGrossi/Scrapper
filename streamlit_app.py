@@ -1,9 +1,10 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
+import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -149,6 +150,90 @@ def has_buy_signal(ticker):
     except:
         return False
 
+
+# =============================================================================
+# DATE CHECK FUNCTIONS
+# =============================================================================
+
+def get_yfinance_earnings_date(ticker):
+    """Get earnings date from yfinance get_earnings_dates() - within 60 days of today."""
+    try:
+        earnings_df = yf.Ticker(ticker).get_earnings_dates(limit=10)
+        
+        if earnings_df is None or earnings_df.empty:
+            return None
+        
+        today = datetime.today().date()
+        best_date = None
+        min_diff = 999
+        
+        for idx in earnings_df.index:
+            try:
+                idx_date = idx.date() if hasattr(idx, 'date') else pd.to_datetime(idx).date()
+                diff = abs((idx_date - today).days)
+                
+                # Only consider dates within 60 days of today
+                if diff < min_diff and diff <= 60:
+                    min_diff = diff
+                    best_date = datetime.combine(idx_date, datetime.min.time())
+            except:
+                continue
+        
+        return best_date
+    except:
+        return None
+
+
+def get_finviz_earnings_date(ticker):
+    """Get earnings date from yfinance earningsTimestamp (what Finviz uses)."""
+    try:
+        info = yf.Ticker(ticker).info
+        ts = info.get('earningsTimestamp') or info.get('earningsTimestampStart')
+        if ts:
+            return datetime.fromtimestamp(ts)
+    except:
+        pass
+    return None
+
+
+def check_date_status(earnings_date, yfinance_date):
+    """
+    Returns 'DATE PASSED' only if yfinance date is within 2 weeks of earnings date
+    and yfinance shows an earlier date. Otherwise returns 'OK'.
+    """
+    try:
+        if earnings_date is None or yfinance_date is None:
+            return "OK"
+        
+        ed_date = earnings_date.date() if hasattr(earnings_date, 'date') else earnings_date
+        yf_date = yfinance_date.date() if hasattr(yfinance_date, 'date') else yfinance_date
+        
+        # If dates are more than 14 days apart, data is unreliable - just say OK
+        date_diff = abs((ed_date - yf_date).days)
+        if date_diff > 14:
+            return "OK"
+        
+        # Within 2 weeks - check if yfinance is earlier (earnings already passed)
+        if yf_date < ed_date:
+            return "DATE PASSED"
+        
+        return "OK"
+    except:
+        return "OK"
+
+
+def get_date_check(ticker):
+    """Get both dates and return the date check status."""
+    finviz_date = get_finviz_earnings_date(ticker)
+    yfinance_date = get_yfinance_earnings_date(ticker)
+    status = check_date_status(finviz_date, yfinance_date)
+    return {
+        "Earnings Date (Finviz)": finviz_date.strftime("%Y-%m-%d") if finviz_date else "N/A",
+        "Earnings Date (yfinance)": yfinance_date.strftime("%Y-%m-%d") if yfinance_date else "N/A",
+        "Date Check": status
+    }
+
+
 def earnings_sort_key(row):
     date = parse_earnings_date(row["Earnings"])
     earn_str = (row["Earnings"] or "").upper()
@@ -239,27 +324,77 @@ with tab1:
     st.markdown("**Criteria:** Earnings this week · SMA20 crossed above SMA50 · Barchart Buy Signal")
     
     if st.button("Find Stocks"):
-        with st.spinner("Scanning..."):
+        with st.spinner("Scanning Finviz..."):
             tickers = get_all_tickers()
         
-        rows = []
-        progress = st.progress(0)
-        for i, t in enumerate(tickers):
-            if has_buy_signal(t):
-                data = get_finviz_data(t)
-                rows.append(data)
-            progress.progress((i + 1) / len(tickers))
-        progress.empty()
+        st.info(f"Found {len(tickers)} tickers from Finviz. Checking Barchart signals...")
         
+        # First pass: Barchart filter
+        barchart_passed = []
+        progress = st.progress(0)
+        status_text = st.empty()
+        
+        for i, t in enumerate(tickers):
+            status_text.text(f"Checking Barchart: {t}")
+            if has_buy_signal(t):
+                barchart_passed.append(t)
+            progress.progress((i + 1) / len(tickers))
+        
+        progress.empty()
+        status_text.empty()
+        
+        st.info(f"{len(barchart_passed)} tickers passed Barchart filter. Checking earnings dates...")
+        
+        # Second pass: Get data and check dates
+        rows = []
+        skipped = []
+        progress = st.progress(0)
+        status_text = st.empty()
+        
+        for i, t in enumerate(barchart_passed):
+            status_text.text(f"Checking dates: {t}")
+            
+            # Get Finviz data
+            data = get_finviz_data(t)
+            
+            # Get date check
+            date_info = get_date_check(t)
+            
+            # Skip if DATE PASSED
+            if date_info["Date Check"] == "DATE PASSED":
+                skipped.append({
+                    "Ticker": t,
+                    "Finviz Date": date_info["Earnings Date (Finviz)"],
+                    "yfinance Date": date_info["Earnings Date (yfinance)"],
+                    "Reason": "DATE PASSED"
+                })
+            else:
+                data["Date Check"] = date_info["Date Check"]
+                rows.append(data)
+            
+            progress.progress((i + 1) / len(barchart_passed))
+        
+        progress.empty()
+        status_text.empty()
+        
+        # Sort by earnings date
         rows = sorted(rows, key=earnings_sort_key)
         
+        # Display results
         if not rows:
-            st.info("No tickers match criteria.")
+            st.warning("No tickers match all criteria.")
         else:
+            st.success(f"✅ {len(rows)} tickers ready to trade")
             st.dataframe(
-                pd.DataFrame(rows)[["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap"]],
+                pd.DataFrame(rows)[["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap", "Date Check"]],
                 use_container_width=True, hide_index=True
             )
+        
+        # Show skipped tickers
+        if skipped:
+            with st.expander(f"⚠️ {len(skipped)} tickers skipped (earnings already passed)"):
+                st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
+                st.caption("These tickers show an earlier earnings date on yfinance, suggesting earnings already occurred.")
     else:
         st.caption("Click Find Stocks to scan.")
 
