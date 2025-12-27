@@ -84,6 +84,98 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
     }
+    
+    /* Metric cards for backtest */
+    .metric-card {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    .metric-value {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .metric-green { color: #22c55e; }
+    .metric-red { color: #ef4444; }
+    .metric-blue { color: #3b82f6; }
+    .metric-yellow { color: #f59e0b; }
+    .metric-white { color: #f1f5f9; }
+    
+    /* Parameter panel */
+    .param-panel {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .param-title {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Section headers */
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 2rem 0 1rem 0;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #334155;
+    }
+    .section-icon {
+        font-size: 1.5rem;
+    }
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #f1f5f9;
+    }
+    
+    /* Exit breakdown cards */
+    .exit-card {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+    }
+    .exit-count {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #f1f5f9;
+    }
+    .exit-pct {
+        font-size: 0.9rem;
+        color: #64748b;
+    }
+    .exit-return {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+    .exit-label {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-top: 0.25rem;
+    }
+    
+    /* Comparison table styling */
+    .best-row {
+        background: rgba(34, 197, 94, 0.1) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -156,35 +248,27 @@ def has_buy_signal(ticker):
 # =============================================================================
 
 def get_yfinance_earnings_date(ticker):
-    """Get earnings date from yfinance get_earnings_dates() - within 60 days of today."""
     try:
         earnings_df = yf.Ticker(ticker).get_earnings_dates(limit=10)
-        
         if earnings_df is None or earnings_df.empty:
             return None
-        
         today = datetime.today().date()
         best_date = None
         min_diff = 999
-        
         for idx in earnings_df.index:
             try:
                 idx_date = idx.date() if hasattr(idx, 'date') else pd.to_datetime(idx).date()
                 diff = abs((idx_date - today).days)
-                
                 if diff < min_diff and diff <= 60:
                     min_diff = diff
                     best_date = datetime.combine(idx_date, datetime.min.time())
             except:
                 continue
-        
         return best_date
     except:
         return None
 
-
 def get_finviz_earnings_date(ticker):
-    """Get earnings date from yfinance earningsTimestamp (what Finviz uses)."""
     try:
         info = yf.Ticker(ticker).info
         ts = info.get('earningsTimestamp') or info.get('earningsTimestampStart')
@@ -194,33 +278,22 @@ def get_finviz_earnings_date(ticker):
         pass
     return None
 
-
 def check_date_status(earnings_date, yfinance_date):
-    """
-    Returns 'DATE PASSED' only if yfinance date is within 2 weeks of earnings date
-    and yfinance shows an earlier date. Otherwise returns 'OK'.
-    """
     try:
         if earnings_date is None or yfinance_date is None:
             return "OK"
-        
         ed_date = earnings_date.date() if hasattr(earnings_date, 'date') else earnings_date
         yf_date = yfinance_date.date() if hasattr(yfinance_date, 'date') else yfinance_date
-        
         date_diff = abs((ed_date - yf_date).days)
         if date_diff > 14:
             return "OK"
-        
         if yf_date < ed_date:
             return "DATE PASSED"
-        
         return "OK"
     except:
         return "OK"
 
-
 def get_date_check(ticker):
-    """Get both dates and return the date check status."""
     finviz_date = get_finviz_earnings_date(ticker)
     yfinance_date = get_yfinance_earnings_date(ticker)
     status = check_date_status(finviz_date, yfinance_date)
@@ -229,7 +302,6 @@ def get_date_check(ticker):
         "Earnings Date (yfinance)": yfinance_date.strftime("%Y-%m-%d") if yfinance_date else "N/A",
         "Date Check": status
     }
-
 
 def earnings_sort_key(row):
     date = parse_earnings_date(row["Earnings"])
@@ -263,10 +335,8 @@ def load_returns_data():
     except:
         return None
 
-
 @st.cache_data(ttl=3600)
 def load_daily_prices():
-    """Load daily prices data for accurate backtest."""
     urls = [
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/daily_prices.csv",
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/daily_prices.csv",
@@ -288,7 +358,6 @@ def load_daily_prices():
     except:
         return None
 
-
 def calc_period_stats(df, col):
     valid = df[col].dropna()
     if len(valid) == 0:
@@ -303,17 +372,11 @@ def calc_period_stats(df, col):
 
 
 # =============================================================================
-# BACKTEST FUNCTIONS (Using Daily Prices)
+# BACKTEST FUNCTIONS
 # =============================================================================
 
 def backtest_with_daily_prices(daily_df, stop_loss=-0.05, profit_target=None, max_days=5):
-    """
-    Backtest using daily price data for accurate stop loss simulation.
-    Checks each day's return to see if stop/target was hit.
-    """
     results = []
-    
-    # Get unique trades (ticker + earnings date combos)
     trades = daily_df.groupby(['Ticker', 'Earnings Date', 'Fiscal Quarter']).size().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter']]
     
     for _, trade in trades.iterrows():
@@ -321,7 +384,6 @@ def backtest_with_daily_prices(daily_df, stop_loss=-0.05, profit_target=None, ma
         earnings_date = trade['Earnings Date']
         fiscal_quarter = trade['Fiscal Quarter']
         
-        # Get daily data for this trade (days 0 to max_days)
         trade_data = daily_df[
             (daily_df['Ticker'] == ticker) & 
             (daily_df['Earnings Date'] == earnings_date) &
@@ -332,10 +394,8 @@ def backtest_with_daily_prices(daily_df, stop_loss=-0.05, profit_target=None, ma
         if trade_data.empty:
             continue
         
-        # Get company name
         company_name = trade_data['Company Name'].iloc[0] if 'Company Name' in trade_data.columns else ticker
         
-        # Simulate the trade day by day
         exit_day = None
         exit_reason = None
         exit_return = None
@@ -349,27 +409,22 @@ def backtest_with_daily_prices(daily_df, stop_loss=-0.05, profit_target=None, ma
             if pd.isna(day_return):
                 continue
             
-            day_return_decimal = day_return / 100  # Convert from % to decimal
-            
-            # Track max/min
+            day_return_decimal = day_return / 100
             max_return = max(max_return, day_return_decimal)
             min_return = min(min_return, day_return_decimal)
             
-            # Check stop loss
             if day_return_decimal <= stop_loss:
                 exit_day = day_num
                 exit_reason = 'Stop Loss'
                 exit_return = stop_loss
                 break
             
-            # Check profit target
             if profit_target and day_return_decimal >= profit_target:
                 exit_day = day_num
                 exit_reason = 'Profit Target'
                 exit_return = profit_target
                 break
         
-        # If no stop/target hit, exit at max_days
         if exit_return is None:
             last_day = trade_data[trade_data['Days From Earnings'] == trade_data['Days From Earnings'].max()]
             if not last_day.empty:
@@ -394,11 +449,8 @@ def backtest_with_daily_prices(daily_df, stop_loss=-0.05, profit_target=None, ma
     
     return pd.DataFrame(results)
 
-
 def backtest_strategy_legacy(df, stop_loss=-0.08, profit_target=None, max_days=5):
-    """Legacy backtest using returns_tracker.csv (less accurate)."""
     results = []
-    
     day_col = '5D Return' if max_days == 5 else '7D Return' if max_days == 7 else '10D Return'
     
     for idx, row in df.iterrows():
@@ -421,7 +473,9 @@ def backtest_strategy_legacy(df, stop_loss=-0.08, profit_target=None, max_days=5
         
         results.append({
             'Ticker': row.get('Ticker', ''),
+            'Company': row.get('Company Name', row.get('Ticker', '')),
             'Earnings Date': row.get('Earnings Date', ''),
+            'Exit Day': max_days,
             'Exit Reason': exit_reason,
             'Return': final_return,
             'Max Return': high if pd.notna(high) else 0,
@@ -506,7 +560,6 @@ with tab1:
         if skipped:
             with st.expander(f"⚠️ {len(skipped)} tickers skipped (earnings already passed)"):
                 st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
-                st.caption("These tickers show an earlier earnings date on yfinance, suggesting earnings already occurred.")
     else:
         st.caption("Click Find Stocks to scan.")
 
@@ -551,7 +604,6 @@ with tab2:
         """.format(len(returns_df)), unsafe_allow_html=True)
         
         st.markdown("### Rules")
-        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -589,7 +641,6 @@ with tab2:
             """, unsafe_allow_html=True)
         
         st.markdown("---")
-        
         st.markdown("### Why These Rules Work (The Data)")
         
         analysis_tab1, analysis_tab2, analysis_tab3, analysis_tab4 = st.tabs([
@@ -677,13 +728,11 @@ with tab2:
                     color = '#22c55e' if row['Marginal'] > 0 else '#ef4444'
                     st.markdown(f"**{row['Period']}:** <span style='color:{color}'>{row['Marginal']:+.2f}%</span>", 
                                unsafe_allow_html=True)
-                
                 st.markdown("")
                 st.warning("After Day 5, you're **losing money** on average by holding.")
         
         with analysis_tab3:
             st.markdown("#### Sector Performance")
-            
             if 'Sector' in returns_df.columns:
                 sector_data = []
                 for sector in returns_df['Sector'].dropna().unique():
@@ -698,7 +747,6 @@ with tab2:
                                     sharpe = v.mean() / v.std()
                                     if sharpe > best_sharpe:
                                         best_sharpe, best_days = sharpe, days
-                        
                         sector_data.append({
                             'Sector': sector, 'Trades': len(sdf),
                             'Avg 5D': sdf['5D Return'].mean() * 100,
@@ -706,7 +754,6 @@ with tab2:
                         })
                 
                 sector_df = pd.DataFrame(sector_data).sort_values('Sharpe', ascending=False)
-                
                 col1, col2 = st.columns([1.5, 1])
                 
                 with col1:
@@ -736,7 +783,6 @@ with tab2:
         
         with analysis_tab4:
             st.markdown("#### Stop Loss Analysis")
-            
             col1, col2 = st.columns(2)
             
             with col1:
@@ -751,13 +797,11 @@ with tab2:
                             stopped_ret = stop * n_stopped
                             not_stopped_ret = not_stopped['5D Return'].sum() if len(not_stopped) > 0 else 0
                             avg_ret = (stopped_ret + not_stopped_ret) / (n_stopped + n_not)
-                            
                             stop_data.append({
                                 'Stop': f"{stop*100:.0f}%",
                                 'Triggered': f"{n_stopped/len(returns_df)*100:.1f}%",
                                 'Avg Return': f"{avg_ret*100:+.2f}%",
                             })
-                    
                     st.dataframe(pd.DataFrame(stop_data), use_container_width=True, hide_index=True)
             
             with col2:
@@ -769,23 +813,25 @@ with tab2:
                             st.markdown(f"**+{thresh*100:.0f}%:** {len(big)} trades → Avg Day 5: +{big['5D Return'].mean()*100:.1f}%")
 
 # =============================================================================
-# TAB 3: BACKTEST (Using Daily Prices)
+# TAB 3: BACKTEST (Professional UI)
 # =============================================================================
 with tab3:
-    st.markdown("### Backtest with Daily Prices")
-    st.caption("Uses actual daily price data for accurate stop loss simulation")
-    
     # Load data
     daily_df = load_daily_prices()
     returns_df = load_returns_data()
-    
-    # Check which data is available
     has_daily = daily_df is not None and not daily_df.empty
     has_returns = returns_df is not None and not returns_df.empty
     
+    # Header
+    st.markdown("""
+    <div style="margin-bottom: 1.5rem;">
+        <h2 style="margin: 0; color: #f1f5f9;">Strategy Backtest</h2>
+        <p style="color: #64748b; margin-top: 0.25rem;">Test stop loss and profit target combinations using historical daily price data</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     if not has_daily and not has_returns:
         st.warning("No data available. Upload daily_prices.csv or returns_tracker.csv to your GitHub repo.")
-        
         col1, col2 = st.columns(2)
         with col1:
             daily_upload = st.file_uploader("Upload daily_prices.csv:", type=['csv'], key='daily')
@@ -802,48 +848,71 @@ with tab3:
                 has_returns = True
     
     if has_daily or has_returns:
-        # Show data status
+        # Data status indicator
         if has_daily:
             n_trades = daily_df.groupby(['Ticker', 'Earnings Date']).ngroups
-            st.success(f"✅ Daily prices loaded: {len(daily_df)} rows, {n_trades} trades")
+            st.markdown(f"""
+            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;">
+                <span style="color: #22c55e; font-weight: 600;">✓ Daily Prices Loaded</span>
+                <span style="color: #94a3b8; margin-left: 1rem;">{len(daily_df):,} price points · {n_trades} trades</span>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.info("📊 Using returns_tracker.csv (less accurate - no intraday stop simulation)")
+            st.markdown(f"""
+            <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;">
+                <span style="color: #fbbf24; font-weight: 600;">⚠ Using Returns Tracker</span>
+                <span style="color: #94a3b8; margin-left: 1rem;">Less accurate - no daily stop simulation</span>
+            </div>
+            """, unsafe_allow_html=True)
         
-        st.markdown("---")
-        
-        # Backtest Parameters
-        st.markdown("#### Parameters")
+        # Parameters Panel
+        st.markdown("""
+        <div class="section-header">
+            <span class="section-icon">⚙️</span>
+            <span class="section-title">Parameters</span>
+        </div>
+        """, unsafe_allow_html=True)
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
+            st.markdown('<div class="param-title">Stop Loss</div>', unsafe_allow_html=True)
             stop_loss = st.select_slider(
                 "Stop Loss",
                 options=[-0.02, -0.03, -0.04, -0.05, -0.06, -0.07, -0.08, -0.10, -0.12, -0.15, -0.20],
                 value=-0.05,
-                format_func=lambda x: f"{x*100:.0f}%"
+                format_func=lambda x: f"{x*100:.0f}%",
+                label_visibility="collapsed"
             )
         
         with col2:
-            use_target = st.checkbox("Use Profit Target", value=False)
+            st.markdown('<div class="param-title">Profit Target</div>', unsafe_allow_html=True)
+            use_target = st.checkbox("Enable Target", value=False)
         
         with col3:
             if use_target:
+                st.markdown('<div class="param-title">Target Level</div>', unsafe_allow_html=True)
                 profit_target = st.select_slider(
                     "Profit Target",
                     options=[0.05, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30],
                     value=0.10,
-                    format_func=lambda x: f"{x*100:.0f}%"
+                    format_func=lambda x: f"+{x*100:.0f}%",
+                    label_visibility="collapsed"
                 )
             else:
                 profit_target = None
-                st.write("Profit Target: None")
+                st.markdown('<div class="param-title">Target Level</div>', unsafe_allow_html=True)
+                st.markdown('<div style="color: #64748b; padding: 0.5rem 0;">No target (let winners run)</div>', unsafe_allow_html=True)
         
         with col4:
-            max_days = st.selectbox("Max Hold Days", [3, 5, 7, 10], index=1)
+            st.markdown('<div class="param-title">Max Hold Days</div>', unsafe_allow_html=True)
+            max_days = st.selectbox("Max Days", [3, 5, 7, 10], index=1, label_visibility="collapsed")
         
-        # Run Backtest Button
-        if st.button("🚀 Run Backtest", type="primary"):
+        # Run Button
+        st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
+        run_backtest = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
+        
+        if run_backtest:
             with st.spinner("Running backtest..."):
                 if has_daily:
                     results = backtest_with_daily_prices(daily_df, stop_loss, profit_target, max_days)
@@ -853,84 +922,205 @@ with tab3:
             if results.empty:
                 st.warning("No trades found in the data.")
             else:
-                # Summary Metrics
-                st.markdown("#### Results")
-                
+                # Calculate metrics
                 total_return = results['Return'].sum() * 100
                 avg_return = results['Return'].mean() * 100
                 win_rate = (results['Return'] > 0).mean() * 100
                 n_trades = len(results)
+                max_win = results['Return'].max() * 100
+                max_loss = results['Return'].min() * 100
                 
-                # Calculate Sharpe (annualized assuming ~50 trades/year)
                 if results['Return'].std() > 0:
-                    sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(50)
+                    sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(52)
                 else:
                     sharpe = 0
                 
-                col1, col2, col3, col4, col5 = st.columns(5)
-                col1.metric("Total Return", f"{total_return:+.1f}%")
-                col2.metric("Avg/Trade", f"{avg_return:+.2f}%")
-                col3.metric("Win Rate", f"{win_rate:.1f}%")
-                col4.metric("Sharpe", f"{sharpe:.2f}")
-                col5.metric("Trades", n_trades)
+                # Results Header
+                st.markdown("""
+                <div class="section-header">
+                    <span class="section-icon">📊</span>
+                    <span class="section-title">Results</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Metric Cards
+                col1, col2, col3, col4, col5, col6 = st.columns(6)
+                
+                with col1:
+                    color_class = "metric-green" if total_return > 0 else "metric-red"
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value {color_class}">{total_return:+.1f}%</div>
+                        <div class="metric-label">Total Return</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    color_class = "metric-green" if avg_return > 0 else "metric-red"
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value {color_class}">{avg_return:+.2f}%</div>
+                        <div class="metric-label">Avg per Trade</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    color_class = "metric-green" if win_rate >= 50 else "metric-yellow"
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value {color_class}">{win_rate:.1f}%</div>
+                        <div class="metric-label">Win Rate</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col4:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value metric-blue">{sharpe:.2f}</div>
+                        <div class="metric-label">Sharpe Ratio</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col5:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value metric-green">{max_win:+.1f}%</div>
+                        <div class="metric-label">Best Trade</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col6:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-value metric-red">{max_loss:+.1f}%</div>
+                        <div class="metric-label">Worst Trade</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
                 
                 # Exit Breakdown
-                st.markdown("#### Exit Breakdown")
+                st.markdown("""
+                <div class="section-header">
+                    <span class="section-icon">🚪</span>
+                    <span class="section-title">Exit Analysis</span>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                exit_stats = results.groupby('Exit Reason').agg({
+                exit_groups = results.groupby('Exit Reason').agg({
                     'Return': ['count', 'mean', 'sum']
-                }).round(4)
-                exit_stats.columns = ['Count', 'Avg Return', 'Total Return']
-                exit_stats['Avg Return'] = exit_stats['Avg Return'].apply(lambda x: f"{x*100:+.2f}%")
-                exit_stats['Total Return'] = exit_stats['Total Return'].apply(lambda x: f"{x*100:+.1f}%")
-                exit_stats['%'] = (exit_stats['Count'] / n_trades * 100).apply(lambda x: f"{x:.1f}%")
-                exit_stats = exit_stats[['Count', '%', 'Avg Return', 'Total Return']]
+                }).reset_index()
+                exit_groups.columns = ['Exit Reason', 'Count', 'Avg Return', 'Total Return']
                 
-                st.dataframe(exit_stats, use_container_width=True)
+                cols = st.columns(len(exit_groups))
+                for i, (_, row) in enumerate(exit_groups.iterrows()):
+                    with cols[i]:
+                        pct = row['Count'] / n_trades * 100
+                        avg_ret = row['Avg Return'] * 100
+                        color = "#22c55e" if avg_ret > 0 else "#ef4444"
+                        
+                        # Determine icon
+                        if 'Stop' in row['Exit Reason']:
+                            icon = "🛑"
+                        elif 'Target' in row['Exit Reason']:
+                            icon = "🎯"
+                        else:
+                            icon = "📅"
+                        
+                        st.markdown(f"""
+                        <div class="exit-card">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">{icon}</div>
+                            <div class="exit-count">{row['Count']}</div>
+                            <div class="exit-pct">{pct:.1f}% of trades</div>
+                            <div class="exit-return" style="color: {color};">{avg_ret:+.2f}% avg</div>
+                            <div class="exit-label">{row['Exit Reason']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
                 
-                # Distribution Chart
+                st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
+                
+                # Charts
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    fig = px.histogram(
-                        results, 
-                        x=results['Return'] * 100, 
-                        nbins=30,
-                        title='Return Distribution',
-                        labels={'x': 'Return %'}
-                    )
-                    fig.add_vline(x=0, line_dash="dash", line_color="white")
-                    fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="red", 
-                                  annotation_text=f"Stop {stop_loss*100:.0f}%")
+                    fig = go.Figure()
+                    
+                    # Create histogram with custom colors
+                    returns_pct = results['Return'] * 100
+                    colors = ['#22c55e' if x > 0 else '#ef4444' for x in returns_pct]
+                    
+                    fig.add_trace(go.Histogram(
+                        x=returns_pct,
+                        nbinsx=25,
+                        marker_color='#3b82f6',
+                        opacity=0.8
+                    ))
+                    
+                    # Add reference lines
+                    fig.add_vline(x=0, line_dash="dash", line_color="#64748b", line_width=1)
+                    fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444", line_width=2,
+                                  annotation_text=f"Stop {stop_loss*100:.0f}%", annotation_position="top")
                     if profit_target:
-                        fig.add_vline(x=profit_target*100, line_dash="dash", line_color="green",
-                                      annotation_text=f"Target {profit_target*100:.0f}%")
+                        fig.add_vline(x=profit_target*100, line_dash="dash", line_color="#22c55e", line_width=2,
+                                      annotation_text=f"Target +{profit_target*100:.0f}%", annotation_position="top")
+                    
                     fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8', height=300, showlegend=False
+                        title="Return Distribution",
+                        xaxis_title="Return %",
+                        yaxis_title="Count",
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8',
+                        height=350,
+                        showlegend=False,
+                        margin=dict(t=50, b=50, l=50, r=30)
                     )
+                    fig.update_xaxes(gridcolor='#1e293b', zerolinecolor='#334155')
+                    fig.update_yaxes(gridcolor='#1e293b')
+                    
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
-                    # Cumulative returns
                     results_sorted = results.sort_values('Earnings Date')
-                    results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod() - 1
+                    results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod()
+                    results_sorted['Cumulative Pct'] = (results_sorted['Cumulative'] - 1) * 100
                     
-                    fig = px.line(
-                        results_sorted, 
-                        x=range(len(results_sorted)), 
-                        y=results_sorted['Cumulative'] * 100,
-                        title='Cumulative Return',
-                        labels={'x': 'Trade #', 'y': 'Cumulative Return %'}
-                    )
+                    fig = go.Figure()
+                    
+                    fig.add_trace(go.Scatter(
+                        x=list(range(1, len(results_sorted) + 1)),
+                        y=results_sorted['Cumulative Pct'],
+                        mode='lines',
+                        line=dict(color='#3b82f6', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(59, 130, 246, 0.1)'
+                    ))
+                    
+                    fig.add_hline(y=0, line_dash="dash", line_color="#64748b", line_width=1)
+                    
                     fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8', height=300, showlegend=False
+                        title="Cumulative Return",
+                        xaxis_title="Trade #",
+                        yaxis_title="Cumulative Return %",
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8',
+                        height=350,
+                        showlegend=False,
+                        margin=dict(t=50, b=50, l=50, r=30)
                     )
+                    fig.update_xaxes(gridcolor='#1e293b')
+                    fig.update_yaxes(gridcolor='#1e293b')
+                    
                     st.plotly_chart(fig, use_container_width=True)
                 
                 # Trade List
-                st.markdown("#### All Trades")
+                st.markdown("""
+                <div class="section-header">
+                    <span class="section-icon">📋</span>
+                    <span class="section-title">Trade Log</span>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 display_df = results.copy()
                 display_df['Return'] = display_df['Return'].apply(lambda x: f"{x*100:+.2f}%")
@@ -939,14 +1129,26 @@ with tab3:
                 if 'Earnings Date' in display_df.columns:
                     display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
                 
+                # Reorder columns
+                col_order = ['Ticker', 'Company', 'Earnings Date', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
+                col_order = [c for c in col_order if c in display_df.columns]
+                display_df = display_df[col_order]
+                
                 st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
         
-        # Strategy Comparison
-        st.markdown("---")
-        st.markdown("### Compare Stop Loss Levels")
+        # Comparison Section
+        st.markdown("<div style='height: 2rem'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="section-header">
+            <span class="section-icon">⚖️</span>
+            <span class="section-title">Stop Loss Comparison</span>
+        </div>
+        """, unsafe_allow_html=True)
         
-        if st.button("📊 Run Comparison"):
-            with st.spinner("Comparing strategies..."):
+        st.caption("Compare different stop loss levels to find the optimal risk/reward balance")
+        
+        if st.button("📊 Compare All Stop Levels", use_container_width=True):
+            with st.spinner("Analyzing stop loss levels..."):
                 stop_levels = [-0.02, -0.03, -0.04, -0.05, -0.06, -0.08, -0.10, -0.15]
                 
                 comparison = []
@@ -961,20 +1163,20 @@ with tab3:
                         win_rate = (res['Return'] > 0).mean()
                         total_ret = res['Return'].sum()
                         stopped = (res['Exit Reason'] == 'Stop Loss').sum()
-                        sharpe = (avg_ret / res['Return'].std()) * np.sqrt(50) if res['Return'].std() > 0 else 0
+                        sharpe = (avg_ret / res['Return'].std()) * np.sqrt(52) if res['Return'].std() > 0 else 0
                         
                         comparison.append({
                             'Stop Loss': f"{stop*100:.0f}%",
+                            'Stop Value': stop,
                             'Avg Return': avg_ret * 100,
                             'Win Rate': win_rate * 100,
                             'Total Return': total_ret * 100,
                             'Stopped %': stopped / len(res) * 100,
                             'Sharpe': sharpe,
+                            'Trades': len(res)
                         })
                 
                 comp_df = pd.DataFrame(comparison)
-                
-                # Highlight best
                 best_idx = comp_df['Sharpe'].idxmax()
                 
                 col1, col2 = st.columns([1.5, 1])
@@ -982,39 +1184,88 @@ with tab3:
                 with col1:
                     fig = make_subplots(specs=[[{"secondary_y": True}]])
                     
+                    # Bar colors - highlight best
+                    bar_colors = ['#22c55e' if i == best_idx else '#3b82f6' for i in range(len(comp_df))]
+                    
                     fig.add_trace(
-                        go.Bar(x=comp_df['Stop Loss'], y=comp_df['Avg Return'], name='Avg Return %',
-                               marker_color=['#22c55e' if i == best_idx else '#3b82f6' for i in range(len(comp_df))]),
+                        go.Bar(
+                            x=comp_df['Stop Loss'],
+                            y=comp_df['Avg Return'],
+                            name='Avg Return %',
+                            marker_color=bar_colors,
+                            opacity=0.8
+                        ),
                         secondary_y=False
                     )
+                    
                     fig.add_trace(
-                        go.Scatter(x=comp_df['Stop Loss'], y=comp_df['Sharpe'], name='Sharpe',
-                                   mode='lines+markers', line=dict(color='#f59e0b', width=2)),
+                        go.Scatter(
+                            x=comp_df['Stop Loss'],
+                            y=comp_df['Sharpe'],
+                            name='Sharpe Ratio',
+                            mode='lines+markers',
+                            line=dict(color='#f59e0b', width=3),
+                            marker=dict(size=10)
+                        ),
                         secondary_y=True
                     )
                     
                     fig.update_layout(
-                        title='Stop Loss Comparison',
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8', height=350
+                        title="Stop Loss Performance Comparison",
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8',
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                        margin=dict(t=80, b=50, l=50, r=50)
                     )
-                    fig.update_yaxes(title_text="Avg Return %", secondary_y=False)
-                    fig.update_yaxes(title_text="Sharpe Ratio", secondary_y=True)
+                    fig.update_xaxes(gridcolor='#1e293b', title="Stop Loss Level")
+                    fig.update_yaxes(title_text="Avg Return %", secondary_y=False, gridcolor='#1e293b')
+                    fig.update_yaxes(title_text="Sharpe Ratio", secondary_y=True, gridcolor='#1e293b')
                     
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
-                    display_comp = comp_df.copy()
+                    # Summary card for best
+                    best_row = comp_df.loc[best_idx]
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.05) 100%); 
+                                border: 1px solid #22c55e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem;">
+                        <div style="color: #22c55e; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">
+                            🏆 Optimal Stop Loss
+                        </div>
+                        <div style="font-size: 2.5rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.5rem;">
+                            {best_row['Stop Loss']}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                            <div>
+                                <div style="color: #94a3b8; font-size: 0.75rem;">Avg Return</div>
+                                <div style="color: #22c55e; font-weight: 600;">{best_row['Avg Return']:+.2f}%</div>
+                            </div>
+                            <div>
+                                <div style="color: #94a3b8; font-size: 0.75rem;">Sharpe</div>
+                                <div style="color: #f59e0b; font-weight: 600;">{best_row['Sharpe']:.2f}</div>
+                            </div>
+                            <div>
+                                <div style="color: #94a3b8; font-size: 0.75rem;">Win Rate</div>
+                                <div style="color: #f1f5f9; font-weight: 600;">{best_row['Win Rate']:.1f}%</div>
+                            </div>
+                            <div>
+                                <div style="color: #94a3b8; font-size: 0.75rem;">Stopped</div>
+                                <div style="color: #f1f5f9; font-weight: 600;">{best_row['Stopped %']:.1f}%</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Comparison table
+                    display_comp = comp_df[['Stop Loss', 'Avg Return', 'Win Rate', 'Sharpe', 'Stopped %']].copy()
                     display_comp['Avg Return'] = display_comp['Avg Return'].apply(lambda x: f"{x:+.2f}%")
                     display_comp['Win Rate'] = display_comp['Win Rate'].apply(lambda x: f"{x:.1f}%")
-                    display_comp['Total Return'] = display_comp['Total Return'].apply(lambda x: f"{x:+.1f}%")
-                    display_comp['Stopped %'] = display_comp['Stopped %'].apply(lambda x: f"{x:.1f}%")
                     display_comp['Sharpe'] = display_comp['Sharpe'].apply(lambda x: f"{x:.2f}")
+                    display_comp['Stopped %'] = display_comp['Stopped %'].apply(lambda x: f"{x:.1f}%")
                     
                     st.dataframe(display_comp, use_container_width=True, hide_index=True)
-                    
-                    best_stop = comp_df.loc[best_idx, 'Stop Loss']
-                    st.success(f"**Best Stop Loss: {best_stop}** (highest Sharpe ratio)")
 
 # =============================================================================
 # TAB 4: POWERBI
