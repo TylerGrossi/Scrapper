@@ -842,120 +842,104 @@ with tab3:
     
     if has_daily or has_returns:
         if has_daily:
-            n_trades = daily_df.groupby(['Ticker', 'Earnings Date']).ngroups
-            st.caption(f"Data: {n_trades} trades (daily prices)")
+            n_trades_total = daily_df.groupby(['Ticker', 'Earnings Date']).ngroups
+            st.caption(f"Data: {n_trades_total} trades (daily prices)")
         else:
             st.caption("Data: returns tracker (less accurate)")
         
-        st.markdown("---")
-        
-        # Parameters
-        col1, col2, col3, col4 = st.columns(4)
+        # Parameters - filters at top
+        col1, col2 = st.columns(2)
         
         with col1:
             stop_loss = st.select_slider(
                 "Stop Loss",
                 options=[-0.02, -0.03, -0.04, -0.05, -0.06, -0.07, -0.08, -0.10, -0.12, -0.15, -0.20],
-                value=-0.05,
+                value=-0.02,
                 format_func=lambda x: f"{x*100:.0f}%"
             )
         
         with col2:
-            use_target = st.checkbox("Use Profit Target", value=False)
-        
-        with col3:
-            if use_target:
-                profit_target = st.select_slider(
-                    "Profit Target",
-                    options=[0.05, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30],
-                    value=0.10,
-                    format_func=lambda x: f"+{x*100:.0f}%"
-                )
-            else:
-                profit_target = None
-                st.caption("Target: None")
-        
-        with col4:
             max_days = st.selectbox("Max Hold Days", [3, 5, 7, 10], index=1)
         
-        if st.button("Run Backtest", type="primary"):
-            with st.spinner("Running..."):
-                if has_daily:
-                    results = backtest_with_daily_prices(daily_df, stop_loss, profit_target, max_days)
-                else:
-                    results = backtest_strategy_legacy(returns_df, stop_loss, profit_target, max_days)
+        st.markdown("---")
+        
+        # Auto-run backtest
+        if has_daily:
+            results = backtest_with_daily_prices(daily_df, stop_loss, None, max_days)
+        else:
+            results = backtest_strategy_legacy(returns_df, stop_loss, None, max_days)
+        
+        if results.empty:
+            st.warning("No trades found.")
+        else:
+            total_return = results['Return'].sum() * 100
+            avg_return = results['Return'].mean() * 100
+            win_rate = (results['Return'] > 0).mean() * 100
+            n_trades = len(results)
+            sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(52) if results['Return'].std() > 0 else 0
             
-            if results.empty:
-                st.warning("No trades found.")
-            else:
-                total_return = results['Return'].sum() * 100
-                avg_return = results['Return'].mean() * 100
-                win_rate = (results['Return'] > 0).mean() * 100
-                n_trades = len(results)
-                sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(52) if results['Return'].std() > 0 else 0
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Total Return", f"{total_return:+.1f}%")
+            col2.metric("Avg/Trade", f"{avg_return:+.2f}%")
+            col3.metric("Win Rate", f"{win_rate:.1f}%")
+            col4.metric("Sharpe", f"{sharpe:.2f}")
+            col5.metric("Trades", n_trades)
+            
+            st.markdown("---")
+            
+            # Exit breakdown
+            st.write("**Exit Breakdown**")
+            exit_stats = results.groupby('Exit Reason').agg({'Return': ['count', 'mean', 'sum']}).round(4)
+            exit_stats.columns = ['Count', 'Avg Return', 'Total Return']
+            exit_stats['Avg Return'] = exit_stats['Avg Return'].apply(lambda x: f"{x*100:+.2f}%")
+            exit_stats['Total Return'] = exit_stats['Total Return'].apply(lambda x: f"{x*100:+.1f}%")
+            st.dataframe(exit_stats, use_container_width=True)
+            
+            # Charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = go.Figure()
+                fig.add_trace(go.Histogram(x=results['Return'] * 100, nbinsx=25, marker_color='#3b82f6'))
+                fig.add_vline(x=0, line_dash="dash", line_color="#64748b")
+                fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444")
+                fig.update_layout(
+                    title="Return Distribution", xaxis_title="Return %", yaxis_title="Count",
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#94a3b8', height=300
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                results_sorted = results.sort_values('Earnings Date')
+                results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod() - 1
                 
-                col1, col2, col3, col4, col5 = st.columns(5)
-                col1.metric("Total Return", f"{total_return:+.1f}%")
-                col2.metric("Avg/Trade", f"{avg_return:+.2f}%")
-                col3.metric("Win Rate", f"{win_rate:.1f}%")
-                col4.metric("Sharpe", f"{sharpe:.2f}")
-                col5.metric("Trades", n_trades)
-                
-                st.markdown("---")
-                
-                # Exit breakdown
-                st.write("**Exit Breakdown**")
-                exit_stats = results.groupby('Exit Reason').agg({'Return': ['count', 'mean', 'sum']}).round(4)
-                exit_stats.columns = ['Count', 'Avg Return', 'Total Return']
-                exit_stats['Avg Return'] = exit_stats['Avg Return'].apply(lambda x: f"{x*100:+.2f}%")
-                exit_stats['Total Return'] = exit_stats['Total Return'].apply(lambda x: f"{x*100:+.1f}%")
-                st.dataframe(exit_stats, use_container_width=True)
-                
-                # Charts
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    fig = go.Figure()
-                    fig.add_trace(go.Histogram(x=results['Return'] * 100, nbinsx=25, marker_color='#3b82f6'))
-                    fig.add_vline(x=0, line_dash="dash", line_color="#64748b")
-                    fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444")
-                    fig.update_layout(
-                        title="Return Distribution", xaxis_title="Return %", yaxis_title="Count",
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8', height=300
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    results_sorted = results.sort_values('Earnings Date')
-                    results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod() - 1
-                    
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=list(range(1, len(results_sorted) + 1)),
-                        y=results_sorted['Cumulative'] * 100,
-                        mode='lines', line=dict(color='#3b82f6', width=2)
-                    ))
-                    fig.add_hline(y=0, line_dash="dash", line_color="#64748b")
-                    fig.update_layout(
-                        title="Cumulative Return", xaxis_title="Trade #", yaxis_title="Return %",
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8', height=300
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Trade list
-                st.write("**All Trades**")
-                display_df = results.copy()
-                display_df['Return'] = display_df['Return'].apply(lambda x: f"{x*100:+.2f}%")
-                display_df['Max Return'] = display_df['Max Return'].apply(lambda x: f"{x*100:+.1f}%")
-                display_df['Min Return'] = display_df['Min Return'].apply(lambda x: f"{x*100:+.1f}%")
-                if 'Earnings Date' in display_df.columns:
-                    display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
-                
-                col_order = ['Ticker', 'Company', 'Earnings Date', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
-                col_order = [c for c in col_order if c in display_df.columns]
-                st.dataframe(display_df[col_order], use_container_width=True, hide_index=True, height=350)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=list(range(1, len(results_sorted) + 1)),
+                    y=results_sorted['Cumulative'] * 100,
+                    mode='lines', line=dict(color='#3b82f6', width=2)
+                ))
+                fig.add_hline(y=0, line_dash="dash", line_color="#64748b")
+                fig.update_layout(
+                    title="Cumulative Return", xaxis_title="Trade #", yaxis_title="Return %",
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#94a3b8', height=300
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Trade list
+            st.write("**All Trades**")
+            display_df = results.copy()
+            display_df['Return'] = display_df['Return'].apply(lambda x: f"{x*100:+.2f}%")
+            display_df['Max Return'] = display_df['Max Return'].apply(lambda x: f"{x*100:+.1f}%")
+            display_df['Min Return'] = display_df['Min Return'].apply(lambda x: f"{x*100:+.1f}%")
+            if 'Earnings Date' in display_df.columns:
+                display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
+            
+            col_order = ['Ticker', 'Company', 'Earnings Date', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
+            col_order = [c for c in col_order if c in display_df.columns]
+            st.dataframe(display_df[col_order], use_container_width=True, hide_index=True, height=350)
         
         # Comparison
         st.markdown("---")
