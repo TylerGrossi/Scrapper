@@ -1,9 +1,11 @@
 # ================================================
 # Earnings Momentum Quant Model - with Barchart Filter
 # ================================================
-# Builds two CSVs:
-#   1. earnings_universe.csv   → Finviz + Barchart "Buy" tickers, fundamentals, earnings dates
-#   2. returns_tracker.csv     → price/returns tracking post-earnings
+# UPDATES v15:
+#   - Fixed pandas dtype warning for Earnings Date (yfinance)
+#   - Added "Date Check" column: "OK" or "DATE PASSED" 
+#   - Removed old unused columns (Earnings Raw, Exact Earnings Date)
+#   - Cleaned up column order
 # ================================================
 
 import requests
@@ -20,507 +22,782 @@ import time, re, os
 
 UNIVERSE_FILE = "earnings_universe.csv"
 RETURNS_FILE  = "returns_tracker.csv"
+PRICES_FILE   = "daily_prices.csv"
          
 FINVIZ_SCREENER = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/json",
 }
 
-# ------------------------------------
-# SCRAPERS
-# ------------------------------------
+
 def get_all_tickers():
-    """Scrape all tickers from Finviz screener."""
     tickers, offset = [], 0
     while True:
         url = f"{FINVIZ_SCREENER}&r={offset + 1}"
         soup = BeautifulSoup(requests.get(url, headers=HEADERS).text, "html.parser")
-        new_tickers = []
-        for row in soup.select("table tr"):
-            cols = row.find_all("td")
-            if len(cols) > 1:
-                ticker = cols[1].text.strip()
-                if ticker.isupper() and ticker.isalpha() and len(ticker) <= 5:
-                    new_tickers.append(ticker)
-        if not new_tickers:
-            break
-        tickers.extend(t for t in new_tickers if t not in tickers)
+        new = [cols[1].text.strip() for row in soup.select("table tr") 
+               for cols in [row.find_all("td")] if len(cols) > 1 
+               and cols[1].text.strip().isupper() and cols[1].text.strip().isalpha()]
+        if not new: break
+        tickers.extend(t for t in new if t not in tickers)
         offset += 20
     return tickers
 
 
 def get_company_name(ticker):
-    """Get company name and sector using yfinance."""
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        name = info.get('longName') or info.get('shortName') or ticker
-        sector = info.get('sector', 'N/A')
-        return name, sector
-    except Exception:
+        info = yf.Ticker(ticker).info
+        return info.get('longName') or info.get('shortName') or ticker, info.get('sector', 'N/A')
+    except:
         return ticker, 'N/A'
 
 
-def get_finviz_stats(ticker):
-    """Scrape Finviz quote page for fundamentals."""
-    url = f"https://finviz.com/quote.ashx?t={ticker}"
+# ============================================================================
+# Get earnings date from yfinance get_earnings_dates()
+# ============================================================================
+def get_yfinance_earnings_date(ticker):
+    """Get the most recent/upcoming earnings date from yfinance."""
     try:
-        soup = BeautifulSoup(requests.get(url, headers=HEADERS, timeout=10).text, "html.parser")
+        earnings_df = yf.Ticker(ticker).get_earnings_dates(limit=10)
         
-        # Get company name and sector using yfinance
-        company_name, sector = get_company_name(ticker)
+        if earnings_df is None or earnings_df.empty:
+            return None, None
         
-        table = soup.find_all("table")[8]
-        cells = table.find_all("td")
-        data = {}
-        for i in range(0, len(cells), 2):
-            key = cells[i].get_text(strip=True)
-            value = cells[i + 1].get_text(strip=True)
-            data[key] = value
+        today = datetime.today().date()
+        best_date = None
+        best_timing = None
+        min_diff = 999
         
-        return {
-            "Ticker": ticker,
-            "Company Name": company_name,
-            "Sector": sector,
-            "Price": data.get("Price"),
-            "EPS (TTM)": data.get("EPS (ttm)"),
-            "P/E": data.get("P/E"),
-            "Forward P/E": data.get("Forward P/E"),
-            "Market Cap": data.get("Market Cap"),
-            "Beta": data.get("Beta"),
-            "Earnings Raw": data.get("Earnings")
-        }
+        for idx in earnings_df.index:
+            try:
+                idx_date = idx.date() if hasattr(idx, 'date') else pd.to_datetime(idx).date()
+                diff = abs((idx_date - today).days)
+                
+                # Only consider dates within 60 days of today (past or future)
+                if diff < min_diff and diff <= 60:
+                    min_diff = diff
+                    best_date = datetime.combine(idx_date, datetime.min.time())
+                    if hasattr(idx, 'hour'):
+                        best_timing = "BMO" if idx.hour < 12 else "AMC"
+            except:
+                continue
+        
+        # If no date within 60 days, return None (don't use stale data)
+        return best_date, best_timing
+    except:
+        return None, None
+
+
+# ============================================================================
+# Check date status
+# ============================================================================
+def check_date_status(earnings_date, yfinance_date):
+    """
+    Returns 'DATE PASSED' only if yfinance date is within 2 weeks of earnings date
+    and yfinance shows an earlier date. Otherwise returns 'OK'.
+    """
+    try:
+        if earnings_date is None or yfinance_date is None:
+            return "OK"
+        
+        ed = safe_dt(earnings_date)
+        yf_d = safe_dt(yfinance_date)
+        
+        if pd.isna(ed) or pd.isna(yf_d):
+            return "OK"
+        
+        ed_date = ed.date()
+        yf_date = yf_d.date()
+        
+        # If dates are more than 14 days apart, data is unreliable - just say OK
+        date_diff = abs((ed_date - yf_date).days)
+        if date_diff > 14:
+            return "OK"
+        
+        # Within 2 weeks - check if yfinance is earlier (earnings already passed)
+        if yf_date < ed_date:
+            return "DATE PASSED"
+        
+        return "OK"
+    except:
+        return "OK"
+
+
+# ============================================================================
+# Get EPS data from yfinance
+# ============================================================================
+def get_eps_from_yfinance(ticker, target_date):
+    result = {"EPS Estimate": None, "Reported EPS": None, "EPS Surprise (%)": None, "Earnings Timing": None}
+    
+    try:
+        earnings_df = yf.Ticker(ticker).get_earnings_dates(limit=20)
+        if earnings_df is None or earnings_df.empty:
+            return result
+        
+        target = target_date.date() if hasattr(target_date, 'date') else pd.to_datetime(target_date).date()
+        
+        best_match, min_diff = None, 999
+        for idx in earnings_df.index:
+            try:
+                idx_date = idx.date() if hasattr(idx, 'date') else pd.to_datetime(idx).date()
+                diff = abs((idx_date - target).days)
+                if diff <= 2 and diff < min_diff:
+                    min_diff, best_match = diff, idx
+            except:
+                continue
+        
+        if best_match is not None:
+            row = earnings_df.loc[best_match]
+            if 'EPS Estimate' in row.index and pd.notna(row['EPS Estimate']):
+                result["EPS Estimate"] = float(row['EPS Estimate'])
+            if 'Reported EPS' in row.index and pd.notna(row['Reported EPS']):
+                result["Reported EPS"] = float(row['Reported EPS'])
+            surp_col = 'Surprise(%)' if 'Surprise(%)' in row.index else 'Surprise (%)'
+            if surp_col in row.index and pd.notna(row[surp_col]):
+                result["EPS Surprise (%)"] = float(row[surp_col])
+            if hasattr(best_match, 'hour'):
+                result["Earnings Timing"] = "BMO" if best_match.hour < 12 else "AMC"
+    except:
+        pass
+    
+    return result
+
+
+# ============================================================================
+# Scrape Yahoo calendar (fallback)
+# ============================================================================
+def scrape_yahoo_calendar(date):
+    results = {}
+    try:
+        url = f"https://finance.yahoo.com/calendar/earnings?day={date.strftime('%Y-%m-%d')}"
+        soup = BeautifulSoup(requests.get(url, headers=HEADERS, timeout=15).text, "html.parser")
+        table = soup.find("table")
+        if not table: return results
+        
+        for row in table.find_all("tr")[1:]:
+            cells = row.find_all("td")
+            if len(cells) < 5: continue
+            try:
+                sym = cells[0].get_text(strip=True).upper()
+                timing = "BMO" if 'before' in cells[2].get_text(strip=True).lower() else ("AMC" if 'after' in cells[2].get_text(strip=True).lower() else None)
+                est = cells[3].get_text(strip=True)
+                est = float(est.replace(",", "")) if est and est not in ["-", "N/A", ""] else None
+                act = cells[4].get_text(strip=True)
+                act = float(act.replace(",", "")) if act and act not in ["-", "N/A", ""] else None
+                surp = cells[5].get_text(strip=True) if len(cells) > 5 else ""
+                surp = float(surp.replace("%", "").replace("+", "").replace(",", "")) if surp and surp not in ["-", "N/A", ""] else None
+                results[sym] = {"EPS Estimate": est, "Reported EPS": act, "EPS Surprise (%)": surp, "Earnings Timing": timing}
+            except:
+                continue
+    except:
+        pass
+    return results
+
+
+# ============================================================================
+# Fiscal Quarter
+# ============================================================================
+def get_fiscal_quarter(ticker, earnings_date):
+    try:
+        info = yf.Ticker(ticker).info
+        fy_end = 12
+        if info.get('lastFiscalYearEnd'):
+            try: fy_end = datetime.fromtimestamp(info['lastFiscalYearEnd']).month
+            except: pass
+        
+        m, y = earnings_date.month, earnings_date.year
+        
+        if fy_end == 12:
+            if m in [1,2]: return f"Q4 {y-1}"
+            elif m in [3,4,5]: return f"Q1 {y}"
+            elif m in [6,7,8]: return f"Q2 {y}"
+            elif m in [9,10,11]: return f"Q3 {y}"
+            else: return f"Q4 {y}"
+        elif fy_end == 3:
+            if m in [4,5]: return f"Q4 {y}"
+            elif m in [6,7,8]: return f"Q1 {y+1}"
+            elif m in [9,10,11]: return f"Q2 {y+1}"
+            elif m == 12: return f"Q3 {y+1}"
+            elif m in [1,2]: return f"Q3 {y}"
+            else: return f"Q4 {y}"
+        elif fy_end == 6:
+            if m in [7,8]: return f"Q4 {y}"
+            elif m in [9,10,11]: return f"Q1 {y+1}"
+            elif m == 12: return f"Q2 {y+1}"
+            elif m in [1,2]: return f"Q2 {y}"
+            elif m in [3,4,5]: return f"Q3 {y}"
+            else: return f"Q4 {y}"
+        elif fy_end == 9:
+            if m in [10,11]: return f"Q4 {y}"
+            elif m == 12: return f"Q1 {y+1}"
+            elif m in [1,2]: return f"Q1 {y}"
+            elif m in [3,4,5]: return f"Q2 {y}"
+            elif m in [6,7,8]: return f"Q3 {y}"
+            else: return f"Q4 {y}"
+        else:
+            fy = y+1 if m > fy_end else y
+            offset = (m - fy_end - 1) % 12
+            q = 1 if offset < 3 else (2 if offset < 6 else (3 if offset < 9 else 4))
+            return f"Q{q} {fy}"
+    except:
+        m, y = earnings_date.month, earnings_date.year
+        if m in [1,2]: return f"Q4 {y-1}"
+        elif m in [3,4,5]: return f"Q1 {y}"
+        elif m in [6,7,8]: return f"Q2 {y}"
+        elif m in [9,10,11]: return f"Q3 {y}"
+        else: return f"Q4 {y}"
+
+
+# ============================================================================
+# Main earnings data function
+# ============================================================================
+def get_earnings_data(ticker, earnings_date=None):
+    result = {
+        "Fiscal Quarter": None, "EPS Estimate": None, "Reported EPS": None, "EPS Surprise (%)": None, 
+        "Earnings Date": None, "Earnings Date (yfinance)": None, "Date Check": "",
+        "Earnings Released": None, "Earnings Timing": None
+    }
+    
+    try:
+        info = yf.Ticker(ticker).info
+        
+        if earnings_date is None:
+            ts = info.get('earningsTimestamp') or info.get('earningsTimestampStart')
+            if ts: earnings_date = datetime.fromtimestamp(ts)
+        
+        if earnings_date:
+            result["Earnings Date"] = earnings_date
+            result["Earnings Released"] = earnings_date.date() < datetime.today().date()
+            result["Fiscal Quarter"] = get_fiscal_quarter(ticker, earnings_date)
+        
+        # Get yfinance earnings date
+        print(f"    Checking yfinance...")
+        yf_date, yf_timing = get_yfinance_earnings_date(ticker)
+        if yf_date:
+            result["Earnings Date (yfinance)"] = yf_date
+            # Calculate date check
+            date_check = check_date_status(earnings_date, yf_date)
+            result["Date Check"] = date_check
+            print(f"      yfinance: {yf_date.strftime('%Y-%m-%d')} | Date Check: {date_check}")
+            if date_check == "DATE PASSED":
+                print(f"      ⚠️ Finviz={earnings_date.date() if earnings_date else 'N/A'}, yfinance={yf_date.date()}")
+        else:
+            print(f"      yfinance: not found")
+            result["Date Check"] = ""
+        
+        # Get EPS if released
+        if result["Earnings Released"]:
+            print(f"    Getting EPS for {result['Fiscal Quarter']}...")
+            eps = get_eps_from_yfinance(ticker, earnings_date)
+            if eps["EPS Estimate"] is not None or eps["Reported EPS"] is not None:
+                result.update({k: eps[k] for k in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)"]})
+                if eps["Earnings Timing"]: result["Earnings Timing"] = eps["Earnings Timing"]
+                print(f"      Est={result['EPS Estimate']}, Act={result['Reported EPS']}")
+            else:
+                cal = scrape_yahoo_calendar(earnings_date)
+                if ticker.upper() in cal:
+                    d = cal[ticker.upper()]
+                    result.update({k: d.get(k) for k in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)"]})
+                    if d.get("Earnings Timing"): result["Earnings Timing"] = d["Earnings Timing"]
+        
+        if not result["Earnings Timing"]:
+            if yf_timing:
+                result["Earnings Timing"] = yf_timing
+            elif result["Earnings Date"]:
+                h = result["Earnings Date"].hour
+                result["Earnings Timing"] = "BMO" if h < 10 else ("AMC" if h >= 16 else None)
     except Exception as e:
-        company_name, sector = get_company_name(ticker)
-        return {"Ticker": ticker, "Company Name": company_name, "Sector": sector, "Error": "Failed"}
+        print(f"    Error: {str(e)}")
+    
+    return result
+
+
+# ============================================================================
+# Backfill
+# ============================================================================
+def backfill(df):
+    # Ensure date columns are datetime type
+    if "Earnings Date (yfinance)" not in df.columns:
+        df["Earnings Date (yfinance)"] = pd.NaT
+    df["Earnings Date (yfinance)"] = pd.to_datetime(df["Earnings Date (yfinance)"], errors='coerce')
+    
+    for col in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)", "Fiscal Quarter", "Earnings Timing", "Date Added", "Date Check"]:
+        if col not in df.columns: 
+            df[col] = np.nan if col in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)"] else ""
+    
+    def needs_bf(row):
+        fq = row.get("Fiscal Quarter")
+        if pd.isna(fq) or fq == "" or (isinstance(fq, str) and ("FY" in fq or len(fq) <= 3)):
+            return True
+        if pd.isna(row.get("EPS Estimate")) and pd.isna(row.get("Reported EPS")):
+            ed = safe_dt(row.get("Earnings Date"))
+            if pd.notna(ed) and ed.date() < datetime.today().date():
+                return True
+        if pd.isna(row.get("Earnings Date (yfinance)")):
+            return True
+        # Also backfill if Date Check is empty but we have both dates
+        if (pd.isna(row.get("Date Check")) or row.get("Date Check") == "") and pd.notna(row.get("Earnings Date (yfinance)")):
+            return True
+        return False
+    
+    need = df[df.apply(needs_bf, axis=1)]
+    if need.empty:
+        print("  No backfill needed.")
+        return df
+    
+    print(f"\n🔄 Backfilling {len(need)} entries...")
+    
+    for idx, row in need.iterrows():
+        t = row["Ticker"]
+        ed = safe_dt(row.get("Earnings Date"))
+        
+        try:
+            if pd.notna(ed):
+                df.at[idx, "Fiscal Quarter"] = get_fiscal_quarter(t, ed)
+                
+                if pd.isna(row.get("Earnings Date (yfinance)")):
+                    yf_date, _ = get_yfinance_earnings_date(t)
+                    if yf_date:
+                        df.at[idx, "Earnings Date (yfinance)"] = pd.Timestamp(yf_date)
+                        date_check = check_date_status(ed, yf_date)
+                        df.at[idx, "Date Check"] = date_check
+                        print(f"    Date Check: {date_check}")
+                else:
+                    # Recalculate Date Check if yfinance date exists but Date Check is empty
+                    yf_existing = df.at[idx, "Earnings Date (yfinance)"]
+                    if pd.notna(yf_existing) and (pd.isna(row.get("Date Check")) or row.get("Date Check") == ""):
+                        date_check = check_date_status(ed, yf_existing)
+                        df.at[idx, "Date Check"] = date_check
+                
+                if ed.date() < datetime.today().date():
+                    eps = get_eps_from_yfinance(t, ed)
+                    if eps["EPS Estimate"] is not None:
+                        df.at[idx, "EPS Estimate"] = eps["EPS Estimate"]
+                    if eps["Reported EPS"] is not None:
+                        df.at[idx, "Reported EPS"] = eps["Reported EPS"]
+                    if eps["EPS Surprise (%)"] is not None:
+                        df.at[idx, "EPS Surprise (%)"] = eps["EPS Surprise (%)"]
+                    if eps["Earnings Timing"]:
+                        df.at[idx, "Earnings Timing"] = eps["Earnings Timing"]
+                    
+                    if pd.isna(df.at[idx, "EPS Estimate"]) and pd.isna(df.at[idx, "Reported EPS"]):
+                        cal = scrape_yahoo_calendar(ed)
+                        if t.upper() in cal:
+                            d = cal[t.upper()]
+                            for k in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)", "Earnings Timing"]:
+                                if d.get(k) is not None:
+                                    df.at[idx, k] = d[k]
+                
+                print(f"  {t} → {df.at[idx, 'Fiscal Quarter']} | {df.at[idx, 'Date Check']}")
+                time.sleep(0.3)
+        except Exception as e:
+            print(f"  {t} error: {e}")
+    
+    print(f"  ✅ Done")
+    return df
+
+
+def get_finviz_stats(ticker):
+    try:
+        soup = BeautifulSoup(requests.get(f"https://finviz.com/quote.ashx?t={ticker}", headers=HEADERS, timeout=10).text, "html.parser")
+        name, sector = get_company_name(ticker)
+        cells = soup.find_all("table")[8].find_all("td")
+        data = {cells[i].get_text(strip=True): cells[i+1].get_text(strip=True) for i in range(0, len(cells), 2)}
+        return {"Ticker": ticker, "Company Name": name, "Sector": sector, "Price": data.get("Price"),
+                "EPS (TTM)": data.get("EPS (ttm)"), "P/E": data.get("P/E"), "Forward P/E": data.get("Forward P/E"),
+                "Market Cap": data.get("Market Cap"), "Beta": data.get("Beta")}
+    except:
+        return {"Ticker": ticker, "Company Name": ticker, "Sector": "N/A"}
 
 
 def has_buy_signal(ticker):
-    """Check Barchart.com for Buy signal (same logic as website)."""
-    url = f"https://www.barchart.com/stocks/quotes/{ticker}/opinion"
     try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
+        soup = BeautifulSoup(requests.get(f"https://www.barchart.com/stocks/quotes/{ticker}/opinion", headers=HEADERS, timeout=10).text, "html.parser")
         sig = soup.find("span", class_="opinion-signal buy")
         return bool(sig and "Buy" in sig.text)
-    except Exception:
+    except:
         return False
 
-# ------------------------------------
-# HELPERS
-# ------------------------------------
-def parse_earnings_date(val, default_year):
-    """Convert 'Oct 23 BMO' → datetime(YYYY,10,23) and extract timing."""
-    if pd.isna(val) or not isinstance(val, str) or len(val.strip()) < 3:
-        return np.nan, None, None
-    
-    original_val = val  # Keep original string
-    
-    # Extract timing (BMO/AMC)
-    timing = None
-    if 'BMO' in val.upper():
-        timing = 'BMO'
-    elif 'AMC' in val.upper():
-        timing = 'AMC'
-    
-    m = re.match(r"([A-Za-z]{3}) (\d{1,2})", val.strip())
-    if not m:
-        return np.nan, timing, original_val
-    try:
-        month_num = datetime.strptime(m.group(1), "%b").month
-        return datetime(default_year, month_num, int(m.group(2))), timing, original_val
-    except:
-        return np.nan, timing, original_val
 
-
-def get_earnings_quarter(earnings_date):
-    """Determine the fiscal quarter based on earnings date.
-    Most companies report 4-6 weeks after quarter end."""
-    if pd.isna(earnings_date):
-        return np.nan
-    
-    try:
-        earnings_date = pd.to_datetime(earnings_date)
-        month = earnings_date.month
-        
-        # Approximate mapping: earnings typically reported ~1 month after quarter end
-        # Jan-Mar earnings → Q4 of previous year
-        # Apr-Jun earnings → Q1
-        # Jul-Sep earnings → Q2
-        # Oct-Dec earnings → Q3
-        if month in [1, 2, 3]:
-            return "Q4"
-        elif month in [4, 5, 6]:
-            return "Q1"
-        elif month in [7, 8, 9]:
-            return "Q2"
-        else:  # Oct, Nov, Dec
-            return "Q3"
-    except:
-        return np.nan
-
-
-def parse_market_cap(v):
-    if pd.isna(v):
-        return np.nan
-    v = str(v).upper().replace("$", "").strip()
-    try:
-        if v.endswith("B"):
-            return float(v[:-1]) * 1e9
-        if v.endswith("M"):
-            return float(v[:-1]) * 1e6
-        if v.endswith("K"):
-            return float(v[:-1]) * 1e3
-        return float(v)
-    except:
-        return np.nan
-
+# Helpers
+def safe_dt(v):
+    if pd.isna(v) or v is None: return pd.NaT
+    if isinstance(v, datetime): return v
+    if isinstance(v, pd.Timestamp): return v.to_pydatetime()
+    try: return pd.to_datetime(v).to_pydatetime()
+    except: return pd.NaT
 
 def to_num(x):
-    try:
-        return float(str(x).replace(",", "").replace("$", "").strip())
-    except:
-        return np.nan
+    try: return float(str(x).replace(",", "").replace("$", "").strip())
+    except: return np.nan
 
-
-def get_base_price(px, date, timing):
-    """Get the base price depending on earnings timing (BMO vs AMC)."""
+def parse_mcap(v):
+    if pd.isna(v): return np.nan
+    v = str(v).upper().replace("$", "").strip()
     try:
+        if v.endswith("B"): return float(v[:-1]) * 1e9
+        if v.endswith("M"): return float(v[:-1]) * 1e6
+        if v.endswith("K"): return float(v[:-1]) * 1e3
+        return float(v)
+    except: return np.nan
+
+def get_base(px, d, timing):
+    try:
+        d = safe_dt(d)
+        if pd.isna(d): return np.nan
         if timing == 'BMO':
-            # BMO (Before Market Open) - use prior day's close (4PM)
-            prior_date = date - timedelta(days=1)
-            prior_prices = px.loc[px.index <= prior_date]
-            if prior_prices.empty:
-                return np.nan
-            return prior_prices.iloc[-1]
-        else:
-            # AMC (After Market Close) or unknown - use same day's close (4PM)
-            same_day_prices = px.loc[px.index <= date]
-            if same_day_prices.empty:
-                return np.nan
-            return same_day_prices.iloc[-1]
-    except:
-        return np.nan
+            p = px.loc[px.index <= d - timedelta(days=1)]
+            return p.iloc[-1] if not p.empty else np.nan
+        p = px.loc[px.index <= d]
+        return p.iloc[-1] if not p.empty else np.nan
+    except: return np.nan
 
-
-def get_return(px, date, days, timing):
-    """Calculate return N days after earnings, respecting timing."""
+def get_ret(px, d, days, timing):
     try:
-        # Get base price based on timing
-        if timing == 'BMO':
-            # BMO - use prior day's close
-            prior_date = date - timedelta(days=1)
-            prior_prices = px.loc[px.index <= prior_date]
-            if prior_prices.empty:
-                return np.nan
-            base = prior_prices.iloc[-1]
-        else:
-            # AMC or unknown - use same day's close
-            same_day_prices = px.loc[px.index <= date]
-            if same_day_prices.empty:
-                return np.nan
-            base = same_day_prices.iloc[-1]
-        
-        # Get price N days after earnings
-        after = px.loc[px.index > date]
-        if len(after) < days:
-            return np.nan
-        future_price = after.iloc[days - 1]
-        return (future_price / base) - 1
-    except:
-        return np.nan
+        d = safe_dt(d)
+        base = get_base(px, d, timing)
+        if pd.isna(base): return np.nan
+        after = px.loc[px.index > d]
+        if len(after) < days: return np.nan
+        return (after.iloc[days-1] / base) - 1
+    except: return np.nan
 
-
-def get_return_to_today(px, date, timing):
-    """Calculate return from earnings date to most recent trading day."""
+def get_ret_today(px, d, timing):
     try:
-        # Get base price based on timing
-        if timing == 'BMO':
-            prior_date = date - timedelta(days=1)
-            prior_prices = px.loc[px.index <= prior_date]
-            if prior_prices.empty:
-                return np.nan
-            base = prior_prices.iloc[-1]
-        else:
-            same_day_prices = px.loc[px.index <= date]
-            if same_day_prices.empty:
-                return np.nan
-            base = same_day_prices.iloc[-1]
-        
-        after = px.loc[px.index > date]
-        if after.empty:
-            return np.nan
-        latest = after.iloc[-1]
-        return (latest / base) - 1
-    except:
-        return np.nan
+        d = safe_dt(d)
+        base = get_base(px, d, timing)
+        if pd.isna(base): return np.nan
+        after = px.loc[px.index > d]
+        return (after.iloc[-1] / base) - 1 if not after.empty else np.nan
+    except: return np.nan
 
-
-def get_week_stats(px, date, days, timing):
-    """Return high/low returns and absolute prices after earnings."""
+def get_stats(px, d, days, timing):
     try:
-        # Get base price based on timing
-        if timing == 'BMO':
-            prior_date = date - timedelta(days=1)
-            prior_prices = px.loc[px.index <= prior_date]
-            if prior_prices.empty:
-                return (np.nan, np.nan, np.nan, np.nan, np.nan)
-            base = prior_prices.iloc[-1]
-        else:
-            same_day_prices = px.loc[px.index <= date]
-            if same_day_prices.empty:
-                return (np.nan, np.nan, np.nan, np.nan, np.nan)
-            base = same_day_prices.iloc[-1]
-        
-        after = px.loc[px.index > date].head(days)
-        if after.empty:
-            return (np.nan, np.nan, np.nan, np.nan, np.nan)
-        
-        high_px = after.max()
-        low_px = after.min()
-        high_ret = (high_px / base) - 1
-        low_ret = (low_px / base) - 1
-        range_pct = (high_px - low_px) / base
-        return (high_ret, low_ret, range_pct, high_px, low_px)
-    except:
-        return (np.nan, np.nan, np.nan, np.nan, np.nan)
+        d = safe_dt(d)
+        base = get_base(px, d, timing)
+        if pd.isna(base): return (np.nan,)*5
+        after = px.loc[px.index > d].head(days)
+        if after.empty: return (np.nan,)*5
+        hi, lo = after.max(), after.min()
+        return ((hi/base)-1, (lo/base)-1, (hi-lo)/base, hi, lo)
+    except: return (np.nan,)*5
+
+
+def clean_columns(df):
+    """Remove old unused columns and reorder."""
+    cols_to_remove = ["Earnings Raw", "Exact Earnings Date", "Secondary Source", "Date Match", 
+                      "Earnings Date (Nasdaq)", "Earnings Date (Secondary)"]
+    for col in cols_to_remove:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+    
+    cols = ["Ticker", "Fiscal Quarter", "Earnings Date", "Earnings Date (yfinance)", "Date Check", "Date Added",
+            "Price", "EPS (TTM)", "EPS Estimate", "Reported EPS", "EPS Surprise (%)",
+            "P/E", "Forward P/E", "Market Cap", "Beta", "Earnings Timing", "Company Name", "Sector"]
+    
+    final_cols = [c for c in cols if c in df.columns]
+    extra_cols = [c for c in df.columns if c not in final_cols]
+    return df[final_cols + extra_cols]
+
 
 # ------------------------------------
-# 1️⃣ BUILD / UPDATE UNIVERSE
+# EXPORT DAILY PRICES FOR POWERBI
+# ------------------------------------
+def export_daily_prices(udf, days_before=5, days_after=30):
+    """
+    Export daily prices for each ticker for PowerBI charting.
+    Creates a long-format CSV with: Ticker, Date, Close, Earnings Date, Days From Earnings, Return From Earnings
+    Only includes trading days within days_before/days_after of each ticker's earnings date.
+    """
+    if udf is None or udf.empty:
+        print("No data to export prices.")
+        return
+    
+    udf = udf.copy()
+    udf["Earnings Date"] = pd.to_datetime(udf["Earnings Date"], errors='coerce')
+    
+    # Get unique tickers with valid earnings dates
+    valid = udf[udf["Earnings Date"].notna()].copy()
+    if valid.empty:
+        print("No valid earnings dates for price export.")
+        return
+    
+    tickers = valid["Ticker"].unique().tolist()
+    
+    # Calculate date range needed (wide range for download, we'll filter per ticker later)
+    min_date = valid["Earnings Date"].min() - timedelta(days=days_before + 10)
+    max_date = valid["Earnings Date"].max() + timedelta(days=days_after + 10)
+    
+    # Cap max_date at today
+    today = datetime.today()
+    if max_date > today:
+        max_date = today + timedelta(days=1)
+    
+    print(f"\n📈 Exporting daily prices for {len(tickers)} tickers...")
+    print(f"   Range: {days_before} days before to {days_after} days after earnings")
+    
+    # Download all prices
+    px = yf.download(tickers, start=min_date, end=max_date, group_by="ticker", auto_adjust=True, progress=False)
+    
+    rows = []
+    for _, r in valid.iterrows():
+        t = r["Ticker"]
+        earnings_date = r["Earnings Date"]
+        fiscal_quarter = r.get("Fiscal Quarter", "")
+        company_name = r.get("Company Name", t)
+        timing = r.get("Earnings Timing", "")
+        
+        # Calculate date window for this ticker
+        window_start = (earnings_date - timedelta(days=days_before)).date()
+        window_end = (earnings_date + timedelta(days=days_after)).date()
+        
+        try:
+            # Get price series for this ticker
+            if len(tickers) > 1:
+                if t not in px.columns.get_level_values(0):
+                    continue
+                prices = px[t]["Close"].dropna()
+            else:
+                prices = px["Close"].dropna()
+            
+            if prices.empty:
+                continue
+            
+            # Get base price (day before earnings for BMO, earnings day for AMC)
+            base_date = earnings_date.date()
+            if timing == "BMO":
+                base_prices = prices[prices.index.date < base_date]
+                base_price = base_prices.iloc[-1] if not base_prices.empty else None
+            else:
+                base_prices = prices[prices.index.date <= base_date]
+                base_price = base_prices.iloc[-1] if not base_prices.empty else None
+            
+            # Create row for each trading day WITHIN THE WINDOW
+            for date_idx, close_price in prices.items():
+                trade_date = date_idx.date() if hasattr(date_idx, 'date') else pd.to_datetime(date_idx).date()
+                
+                # Skip if outside the window for this ticker
+                if trade_date < window_start or trade_date > window_end:
+                    continue
+                
+                days_from_earnings = (trade_date - earnings_date.date()).days
+                
+                # Calculate return from earnings base price
+                return_from_earnings = None
+                if base_price is not None and base_price > 0:
+                    if timing == "BMO" and trade_date >= base_date:
+                        return_from_earnings = (close_price / base_price - 1) * 100
+                    elif timing != "BMO" and trade_date > base_date:
+                        return_from_earnings = (close_price / base_price - 1) * 100
+                    elif timing != "BMO" and trade_date == base_date:
+                        return_from_earnings = 0.0
+                
+                rows.append({
+                    "Ticker": t,
+                    "Company Name": company_name,
+                    "Fiscal Quarter": fiscal_quarter,
+                    "Date": trade_date,
+                    "Close": round(close_price, 2),
+                    "Earnings Date": earnings_date.date(),
+                    "Earnings Timing": timing,
+                    "Days From Earnings": days_from_earnings,
+                    "Return From Earnings (%)": round(return_from_earnings, 2) if return_from_earnings is not None else None
+                })
+        except Exception as e:
+            print(f"   Error processing {t}: {e}")
+            continue
+    
+    if not rows:
+        print("   No price data collected.")
+        return
+    
+    df = pd.DataFrame(rows)
+    df = df.sort_values(["Ticker", "Fiscal Quarter", "Date"]).reset_index(drop=True)
+    
+    df.to_csv(PRICES_FILE, index=False)
+    print(f"✅ Saved {PRICES_FILE} ({len(df)} rows, {df['Ticker'].nunique()} tickers)")
+
+
+# ------------------------------------
+# BUILD UNIVERSE
 # ------------------------------------
 def build_universe():
     today = datetime.today().date()
-    finviz_tickers = get_all_tickers()
-    print(f"[{today}] Found {len(finviz_tickers)} Finviz tickers...")
+    today_str = today.strftime("%Y-%m-%d")
+    
+    tickers = get_all_tickers()
+    print(f"[{today}] Found {len(tickers)} Finviz tickers...")
 
-    # --- Apply Barchart Buy filter ---
-    filtered_tickers = []
-    for t in finviz_tickers:
-        if has_buy_signal(t):
-            filtered_tickers.append(t)
+    filtered = []
+    for t in tickers:
+        if has_buy_signal(t): filtered.append(t)
         time.sleep(0.3)
-    print(f"[{today}] {len(filtered_tickers)} tickers passed Barchart Buy filter.")
+    print(f"[{today}] {len(filtered)} passed Barchart filter.")
 
-    all_rows = []
-    for t in filtered_tickers:
-        row = get_finviz_stats(t)
-        print(f"  {t}: {row.get('Company Name', 'N/A')} - {row.get('Sector', 'N/A')}")
-        all_rows.append(row)
-        time.sleep(0.5)
-
-    df = pd.DataFrame(all_rows)
-    yr = datetime.today().year
-    
-    # Parse earnings date and timing
-    if "Earnings Raw" in df.columns:
-        parsed = df["Earnings Raw"].apply(lambda x: pd.Series(parse_earnings_date(x, yr)))
-        df["Earnings Date"] = parsed[0]
-        timing_col = parsed[1]  # Keep timing internally for calculations
-        # Earnings Raw already exists in the data
-    else:
-        df["Earnings Date"] = np.nan
-        timing_col = None
-
-    # Add quarter column
-    df["Quarter"] = df["Earnings Date"].apply(get_earnings_quarter)
-
-    # Convert numeric columns
-    for c in ["Price", "EPS (TTM)", "P/E", "Forward P/E", "Beta"]:
-        if c in df.columns:
-            df[c] = df[c].apply(to_num)
-    if "Market Cap" in df.columns:
-        df["Market Cap"] = df["Market Cap"].apply(parse_market_cap)
-    if "Price" in df.columns:
-        df["Price"] = df["Price"].round(2)
-
-    # Merge with existing file
+    existing_tickers = set()
     if os.path.exists(UNIVERSE_FILE):
-        existing = pd.read_csv(UNIVERSE_FILE)
-        
-        # Remove Scrape Date and Timing if they exist
-        cols_to_remove = ["Scrape Date", "Timing"]
-        for col in cols_to_remove:
-            if col in existing.columns:
-                existing = existing.drop(columns=[col])
-        
-        # Ensure Earnings Date is datetime
-        if "Earnings Date" in existing.columns:
-            existing["Earnings Date"] = pd.to_datetime(existing["Earnings Date"], errors='coerce')
-        
-        # Recalculate Quarter for existing data
-        if "Earnings Date" in existing.columns:
-            existing["Quarter"] = existing["Earnings Date"].apply(get_earnings_quarter)
-        
-        # Combine
-        df = pd.concat([existing, df], ignore_index=True)
-        
-        # Remove duplicates: same Ticker AND Quarter (keep most recent)
-        df.drop_duplicates(subset=["Ticker", "Quarter"], keep="last", inplace=True)
-        
-        # Backfill missing company names and sectors
-        missing_data = df[(df["Company Name"].isna() | (df["Company Name"] == "")) | 
-                          (df["Sector"].isna() | (df["Sector"] == ""))]
-        if not missing_data.empty:
-            print(f"\nBackfilling {len(missing_data)} missing company names and/or sectors...")
-            for idx, row in missing_data.iterrows():
-                ticker = row["Ticker"]
-                company_name, sector = get_company_name(ticker)
-                df.at[idx, "Company Name"] = company_name
-                df.at[idx, "Sector"] = sector
-                print(f"  {ticker}: {company_name} - {sector}")
-                time.sleep(0.2)
+        existing_df = pd.read_csv(UNIVERSE_FILE)
+        existing_tickers = set(existing_df["Ticker"].dropna().unique())
 
-    # Ensure Earnings Date is datetime
+    rows, skipped = [], []
+    for t in filtered:
+        row = get_finviz_stats(t)
+        print(f"  {t}: Getting earnings...")
+        e = get_earnings_data(t)
+        
+        if e.get("Earnings Released"):
+            print(f"    ⏭️ SKIPPED: Earnings Released")
+            skipped.append((t, "RELEASED"))
+            time.sleep(0.3)
+            continue
+        
+        row.update({k: e.get(k) for k in [
+            "Earnings Date", "EPS Estimate", "Reported EPS", "EPS Surprise (%)", 
+            "Earnings Timing", "Fiscal Quarter", "Earnings Date (yfinance)", "Date Check"
+        ]})
+        
+        if t not in existing_tickers:
+            row["Date Added"] = today_str
+            print(f"    ✅ NEW: {row.get('Company Name')} | {e.get('Fiscal Quarter')} | Added: {today_str}")
+        else:
+            row["Date Added"] = None
+            print(f"    ✅ {row.get('Company Name')} | {e.get('Fiscal Quarter')}")
+        
+        rows.append(row)
+        time.sleep(0.5)
+    
+    if skipped:
+        print(f"\n📋 Skipped {len(skipped)} tickers:")
+        for t, reason in skipped:
+            print(f"   - {t}: {reason}")
+
+    if not rows:
+        print("\n⚠️ No new tickers.")
+        if os.path.exists(UNIVERSE_FILE):
+            df = pd.read_csv(UNIVERSE_FILE)
+            df["Earnings Date"] = pd.to_datetime(df["Earnings Date"], errors='coerce')
+            df["Earnings Date (yfinance)"] = pd.to_datetime(df.get("Earnings Date (yfinance)"), errors='coerce')
+            df = backfill(df)
+            df = clean_columns(df)
+            df.to_csv(UNIVERSE_FILE, index=False)
+            return df
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
     df["Earnings Date"] = pd.to_datetime(df["Earnings Date"], errors='coerce')
-    
-    # Sort by earnings date
-    df = df.sort_values(by="Earnings Date", ascending=True).reset_index(drop=True)
-    
-    # Reorder columns: Ticker, Quarter, Price, ... , Earnings Raw, Earnings Date, Company Name, Sector
-    base_cols = ["Ticker", "Quarter", "Price", "EPS (TTM)", "P/E", "Forward P/E", "Market Cap", "Beta", 
-                 "Earnings Raw", "Earnings Date", "Company Name", "Sector"]
-    # Keep any extra columns that might exist
-    final_cols = [c for c in base_cols if c in df.columns]
-    extra_cols = [c for c in df.columns if c not in final_cols]
-    df = df[final_cols + extra_cols]
+    df["Earnings Date (yfinance)"] = pd.to_datetime(df["Earnings Date (yfinance)"], errors='coerce')
+
+    for c in ["Price", "EPS (TTM)", "P/E", "Forward P/E", "Beta", "EPS Estimate", "Reported EPS", "EPS Surprise (%)"]:
+        if c in df.columns: df[c] = df[c].apply(to_num)
+    if "Market Cap" in df.columns:
+        df["Market Cap"] = df["Market Cap"].apply(parse_mcap)
+
+    if os.path.exists(UNIVERSE_FILE):
+        old = pd.read_csv(UNIVERSE_FILE)
+        old["Earnings Date"] = pd.to_datetime(old["Earnings Date"], errors='coerce')
+        old["Earnings Date (yfinance)"] = pd.to_datetime(old.get("Earnings Date (yfinance)"), errors='coerce')
+        
+        for c in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)", "Fiscal Quarter", "Earnings Timing",
+                  "Earnings Date (yfinance)", "Date Added", "Date Check"]:
+            if c not in old.columns: 
+                old[c] = np.nan if c in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)"] else ""
+        
+        for idx, row in df.iterrows():
+            ticker, fq = row["Ticker"], row.get("Fiscal Quarter")
+            match = old[(old["Ticker"] == ticker) & (old["Fiscal Quarter"] == fq)]
+            if not match.empty and pd.notna(match.iloc[0].get("Date Added")) and match.iloc[0].get("Date Added") != "":
+                df.at[idx, "Date Added"] = match.iloc[0]["Date Added"]
+        
+        df = pd.concat([old, df], ignore_index=True)
+        df.drop_duplicates(subset=["Ticker", "Fiscal Quarter"], keep="last", inplace=True)
+        df = backfill(df)
+
+    df = clean_columns(df)
+    df = df.sort_values("Earnings Date").reset_index(drop=True)
     
     df.to_csv(UNIVERSE_FILE, index=False)
-    print(f"✅ Updated {UNIVERSE_FILE} ({len(df)} total tickers)")
+    print(f"✅ Saved {UNIVERSE_FILE} ({len(df)} entries)")
     return df
 
-# ------------------------------------
-# 2️⃣ UPDATE RETURNS TRACKER
-# ------------------------------------
-def update_returns(universe_df):
-    """Update returns for all tickers in universe, filling in any missing data."""
-    if os.path.exists(RETURNS_FILE):
-        df_returns = pd.read_csv(RETURNS_FILE, parse_dates=["Earnings Date"])
-        
-        # Add Quarter column to existing returns if it doesn't exist
-        if "Quarter" not in df_returns.columns:
-            df_returns["Quarter"] = df_returns["Earnings Date"].apply(get_earnings_quarter)
-    else:
-        df_returns = pd.DataFrame()
 
-    # Get all unique tickers from universe
-    tickers = universe_df["Ticker"].dropna().unique().tolist()
-    start = universe_df["Earnings Date"].min() - timedelta(days=5)
+# ------------------------------------
+# UPDATE RETURNS
+# ------------------------------------
+def update_returns(udf):
+    if udf is None or udf.empty: return
+    
+    tickers = udf["Ticker"].dropna().unique().tolist()
+    if not tickers: return
+    
+    udf = udf.copy()
+    udf["Earnings Date"] = pd.to_datetime(udf["Earnings Date"], errors='coerce')
+    
+    valid = udf["Earnings Date"].dropna()
+    if valid.empty: return
+    
+    start = pd.to_datetime(valid.min()) - timedelta(days=5)
     end = datetime.today() + timedelta(days=2)
-    print(f"\nDownloading price data for {len(tickers)} tickers...")
+    
+    print(f"\nDownloading prices for {len(tickers)} tickers...")
+    px = yf.download(tickers, start=start, end=end, group_by="ticker", auto_adjust=True, progress=False)
+    rows = []
 
-    price_data = yf.download(tickers, start=start, end=end, group_by="ticker", auto_adjust=True, progress=False)
-    updated_rows = []
-
-    print(f"\nCalculating returns for {len(universe_df)} ticker-date combinations...")
-    for idx, row in universe_df.iterrows():
-        t, d = row["Ticker"], row["Earnings Date"]
+    for _, r in udf.iterrows():
+        t, d = r["Ticker"], safe_dt(r["Earnings Date"])
+        timing = r.get("Earnings Timing")
+        if pd.isna(d): continue
         
-        # Extract timing from Earnings Raw for calculations
-        timing = None
-        if pd.notna(row.get("Earnings Raw")):
-            earnings_raw = str(row.get("Earnings Raw"))
-            if 'BMO' in earnings_raw.upper():
-                timing = 'BMO'
-            elif 'AMC' in earnings_raw.upper():
-                timing = 'AMC'
-        
-        # Skip if earnings date is invalid
-        if pd.isna(d):
-            continue
-            
         try:
-            # Handle single ticker vs multiple tickers data structure
-            if len(tickers) == 1:
-                px = price_data["Close"].dropna()
-            else:
-                px = price_data[t]["Close"].dropna()
+            p = px[t]["Close"].dropna() if len(tickers) > 1 else px["Close"].dropna()
+            base = get_base(p, d, timing)
+            hi, lo, rng, hip, lop = get_stats(p, d, 7, timing)
             
-            base_price = get_base_price(px, d, timing)
-            r1 = get_return(px, d, 1, timing)
-            r3 = get_return(px, d, 3, timing)
-            r5 = get_return(px, d, 5, timing)
-            r7 = get_return(px, d, 7, timing)
-            r10 = get_return(px, d, 10, timing)
-            r_today = get_return_to_today(px, d, timing)
-            high_ret, low_ret, rng, high_px, low_px = get_week_stats(px, d, 7, timing)
-
-            updated_rows.append({
-                "Ticker": t,
-                "Quarter": row.get("Quarter", np.nan),
-                "Earnings Date": d,
-                "Price": round(base_price, 2) if not pd.isna(base_price) else np.nan,
-                "EPS (TTM)": row.get("EPS (TTM)"),
-                "P/E": row.get("P/E"),
-                "Forward P/E": row.get("Forward P/E"),
-                "Market Cap": row.get("Market Cap"),
-                "Beta": row.get("Beta"),
-                "1D Return": round(r1, 3) if not pd.isna(r1) else np.nan,
-                "3D Return": round(r3, 3) if not pd.isna(r3) else np.nan,
-                "5D Return": round(r5, 3) if not pd.isna(r5) else np.nan,
-                "7D Return": round(r7, 3) if not pd.isna(r7) else np.nan,
-                "10D Return": round(r10, 3) if not pd.isna(r10) else np.nan,
-                "Return to Today": round(r_today, 3) if not pd.isna(r_today) else np.nan,
-                "1W High Return": round(high_ret, 3) if not pd.isna(high_ret) else np.nan,
-                "1W Low Return": round(low_ret, 3) if not pd.isna(low_ret) else np.nan,
-                "1W Range": round(rng, 3) if not pd.isna(rng) else np.nan,
-                "1W High Price": round(high_px, 2) if not pd.isna(high_px) else np.nan,
-                "1W Low Price": round(low_px, 2) if not pd.isna(low_px) else np.nan,
-                "Company Name": row.get("Company Name", t),
-                "Sector": row.get("Sector", "N/A")
+            rows.append({
+                "Ticker": t, "Fiscal Quarter": r.get("Fiscal Quarter"), 
+                "Earnings Date": d, "Earnings Date (yfinance)": r.get("Earnings Date (yfinance)"),
+                "Date Check": r.get("Date Check"), "Date Added": r.get("Date Added"),
+                "Earnings Timing": timing,
+                "Price": round(base, 2) if pd.notna(base) else np.nan,
+                "EPS (TTM)": r.get("EPS (TTM)"), "EPS Estimate": r.get("EPS Estimate"), 
+                "Reported EPS": r.get("Reported EPS"), "EPS Surprise (%)": r.get("EPS Surprise (%)"),
+                "P/E": r.get("P/E"), "Forward P/E": r.get("Forward P/E"), 
+                "Market Cap": r.get("Market Cap"), "Beta": r.get("Beta"),
+                "1D Return": round(get_ret(p, d, 1, timing), 3) if pd.notna(get_ret(p, d, 1, timing)) else np.nan,
+                "3D Return": round(get_ret(p, d, 3, timing), 3) if pd.notna(get_ret(p, d, 3, timing)) else np.nan,
+                "5D Return": round(get_ret(p, d, 5, timing), 3) if pd.notna(get_ret(p, d, 5, timing)) else np.nan,
+                "7D Return": round(get_ret(p, d, 7, timing), 3) if pd.notna(get_ret(p, d, 7, timing)) else np.nan,
+                "10D Return": round(get_ret(p, d, 10, timing), 3) if pd.notna(get_ret(p, d, 10, timing)) else np.nan,
+                "Return to Today": round(get_ret_today(p, d, timing), 3) if pd.notna(get_ret_today(p, d, timing)) else np.nan,
+                "1W High Return": round(hi, 3) if pd.notna(hi) else np.nan, 
+                "1W Low Return": round(lo, 3) if pd.notna(lo) else np.nan,
+                "1W Range": round(rng, 3) if pd.notna(rng) else np.nan, 
+                "1W High Price": round(hip, 2) if pd.notna(hip) else np.nan, 
+                "1W Low Price": round(lop, 2) if pd.notna(lop) else np.nan,
+                "Company Name": r.get("Company Name", t), "Sector": r.get("Sector", "N/A")
             })
-            
-            if (idx + 1) % 10 == 0:
-                print(f"  Processed {idx + 1}/{len(universe_df)} entries...")
-        except Exception as e:
-            print(f"  ⚠️ Error processing {t} on {d}: {str(e)}")
-            continue
+        except: continue
 
-    df_new = pd.DataFrame(updated_rows)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["Earnings Date"] = pd.to_datetime(df["Earnings Date"], errors='coerce')
+        df["Earnings Date (yfinance)"] = pd.to_datetime(df["Earnings Date (yfinance)"], errors='coerce')
+        df = df.sort_values("Earnings Date").reset_index(drop=True)
     
-    # Combine with existing returns, keeping the most recent calculation
-    if not df_returns.empty:
-        df_combined = pd.concat([df_returns, df_new], ignore_index=True)
-        
-        # Ensure Quarter column exists before deduplication
-        if "Quarter" not in df_combined.columns:
-            df_combined["Quarter"] = df_combined["Earnings Date"].apply(get_earnings_quarter)
-        
-        # Remove duplicates by Ticker AND Quarter (keep most recent)
-        df_combined.drop_duplicates(subset=["Ticker", "Quarter"], keep="last", inplace=True)
-    else:
-        df_combined = df_new
+    df.to_csv(RETURNS_FILE, index=False)
+    print(f"✅ Saved {RETURNS_FILE} ({len(df)} entries)")
 
-    df_combined = df_combined.sort_values(by="Earnings Date", ascending=True).reset_index(drop=True)
-    
-    # Reorder columns to match desired format: Ticker, Quarter at the start
-    preferred_order = ["Ticker", "Quarter", "Earnings Date", "Price", "EPS (TTM)", "P/E", 
-                      "Forward P/E", "Market Cap", "Beta", "1D Return", "3D Return", "5D Return",
-                      "7D Return", "10D Return", "Return to Today", "1W High Return", "1W Low Return",
-                      "1W Range", "1W High Price", "1W Low Price", "Company Name", "Sector"]
-    
-    final_cols = [c for c in preferred_order if c in df_combined.columns]
-    extra_cols = [c for c in df_combined.columns if c not in final_cols]
-    df_combined = df_combined[final_cols + extra_cols]
-    
-    df_combined.to_csv(RETURNS_FILE, index=False)
-    print(f"✅ Updated {RETURNS_FILE} ({len(df_combined)} total entries)")
-    print(f"   - Added/updated {len(df_new)} entries this run")
 
-# ------------------------------------
-# RUN PIPELINE
-# ------------------------------------
 if __name__ == "__main__":
     print("=" * 60)
-    print("EARNINGS MOMENTUM QUANT MODEL - PIPELINE START")
+    print("EARNINGS MOMENTUM v15")
+    print(f"📅 {datetime.today().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
     
-    # Step 1: Build/update universe with new tickers
     universe = build_universe()
-    
-    # Step 2: Calculate returns for all tickers (new and existing)
     update_returns(universe)
+    export_daily_prices(universe)
     
     print("\n" + "=" * 60)
-    print("PIPELINE COMPLETE")
+    print("COMPLETE")
     print("=" * 60)
