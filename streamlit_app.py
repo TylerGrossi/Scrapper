@@ -813,25 +813,18 @@ with tab2:
                             st.markdown(f"**+{thresh*100:.0f}%:** {len(big)} trades → Avg Day 5: +{big['5D Return'].mean()*100:.1f}%")
 
 # =============================================================================
-# TAB 3: BACKTEST (Professional UI)
+# TAB 3: BACKTEST
 # =============================================================================
 with tab3:
-    # Load data
     daily_df = load_daily_prices()
     returns_df = load_returns_data()
     has_daily = daily_df is not None and not daily_df.empty
     has_returns = returns_df is not None and not returns_df.empty
     
-    # Header
-    st.markdown("""
-    <div style="margin-bottom: 1.5rem;">
-        <h2 style="margin: 0; color: #f1f5f9;">Strategy Backtest</h2>
-        <p style="color: #64748b; margin-top: 0.25rem;">Test stop loss and profit target combinations using historical daily price data</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("Strategy Backtest")
     
     if not has_daily and not has_returns:
-        st.warning("No data available. Upload daily_prices.csv or returns_tracker.csv to your GitHub repo.")
+        st.warning("No data available. Upload daily_prices.csv or returns_tracker.csv.")
         col1, col2 = st.columns(2)
         with col1:
             daily_upload = st.file_uploader("Upload daily_prices.csv:", type=['csv'], key='daily')
@@ -848,280 +841,111 @@ with tab3:
                 has_returns = True
     
     if has_daily or has_returns:
-        # Data status indicator
         if has_daily:
             n_trades = daily_df.groupby(['Ticker', 'Earnings Date']).ngroups
-            st.markdown(f"""
-            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;">
-                <span style="color: #22c55e; font-weight: 600;">✓ Daily Prices Loaded</span>
-                <span style="color: #94a3b8; margin-left: 1rem;">{len(daily_df):,} price points · {n_trades} trades</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption(f"Data: {n_trades} trades (daily prices)")
         else:
-            st.markdown(f"""
-            <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem;">
-                <span style="color: #fbbf24; font-weight: 600;">⚠ Using Returns Tracker</span>
-                <span style="color: #94a3b8; margin-left: 1rem;">Less accurate - no daily stop simulation</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.caption("Data: returns tracker (less accurate)")
         
-        # Parameters Panel
-        st.markdown("""
-        <div class="section-header">
-            <span class="section-icon">⚙️</span>
-            <span class="section-title">Parameters</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("---")
         
+        # Parameters
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.markdown('<div class="param-title">Stop Loss</div>', unsafe_allow_html=True)
             stop_loss = st.select_slider(
                 "Stop Loss",
                 options=[-0.02, -0.03, -0.04, -0.05, -0.06, -0.07, -0.08, -0.10, -0.12, -0.15, -0.20],
                 value=-0.05,
-                format_func=lambda x: f"{x*100:.0f}%",
-                label_visibility="collapsed"
+                format_func=lambda x: f"{x*100:.0f}%"
             )
         
         with col2:
-            st.markdown('<div class="param-title">Profit Target</div>', unsafe_allow_html=True)
-            use_target = st.checkbox("Enable Target", value=False)
+            use_target = st.checkbox("Use Profit Target", value=False)
         
         with col3:
             if use_target:
-                st.markdown('<div class="param-title">Target Level</div>', unsafe_allow_html=True)
                 profit_target = st.select_slider(
                     "Profit Target",
                     options=[0.05, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30],
                     value=0.10,
-                    format_func=lambda x: f"+{x*100:.0f}%",
-                    label_visibility="collapsed"
+                    format_func=lambda x: f"+{x*100:.0f}%"
                 )
             else:
                 profit_target = None
-                st.markdown('<div class="param-title">Target Level</div>', unsafe_allow_html=True)
-                st.markdown('<div style="color: #64748b; padding: 0.5rem 0;">No target (let winners run)</div>', unsafe_allow_html=True)
+                st.caption("Target: None")
         
         with col4:
-            st.markdown('<div class="param-title">Max Hold Days</div>', unsafe_allow_html=True)
-            max_days = st.selectbox("Max Days", [3, 5, 7, 10], index=1, label_visibility="collapsed")
+            max_days = st.selectbox("Max Hold Days", [3, 5, 7, 10], index=1)
         
-        # Run Button
-        st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
-        run_backtest = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
-        
-        if run_backtest:
-            with st.spinner("Running backtest..."):
+        if st.button("Run Backtest", type="primary"):
+            with st.spinner("Running..."):
                 if has_daily:
                     results = backtest_with_daily_prices(daily_df, stop_loss, profit_target, max_days)
                 else:
                     results = backtest_strategy_legacy(returns_df, stop_loss, profit_target, max_days)
             
             if results.empty:
-                st.warning("No trades found in the data.")
+                st.warning("No trades found.")
             else:
-                # Calculate metrics
                 total_return = results['Return'].sum() * 100
                 avg_return = results['Return'].mean() * 100
                 win_rate = (results['Return'] > 0).mean() * 100
                 n_trades = len(results)
-                max_win = results['Return'].max() * 100
-                max_loss = results['Return'].min() * 100
+                sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(52) if results['Return'].std() > 0 else 0
                 
-                if results['Return'].std() > 0:
-                    sharpe = (results['Return'].mean() / results['Return'].std()) * np.sqrt(52)
-                else:
-                    sharpe = 0
+                col1, col2, col3, col4, col5 = st.columns(5)
+                col1.metric("Total Return", f"{total_return:+.1f}%")
+                col2.metric("Avg/Trade", f"{avg_return:+.2f}%")
+                col3.metric("Win Rate", f"{win_rate:.1f}%")
+                col4.metric("Sharpe", f"{sharpe:.2f}")
+                col5.metric("Trades", n_trades)
                 
-                # Results Header
-                st.markdown("""
-                <div class="section-header">
-                    <span class="section-icon">📊</span>
-                    <span class="section-title">Results</span>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("---")
                 
-                # Metric Cards
-                col1, col2, col3, col4, col5, col6 = st.columns(6)
-                
-                with col1:
-                    color_class = "metric-green" if total_return > 0 else "metric-red"
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value {color_class}">{total_return:+.1f}%</div>
-                        <div class="metric-label">Total Return</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col2:
-                    color_class = "metric-green" if avg_return > 0 else "metric-red"
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value {color_class}">{avg_return:+.2f}%</div>
-                        <div class="metric-label">Avg per Trade</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col3:
-                    color_class = "metric-green" if win_rate >= 50 else "metric-yellow"
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value {color_class}">{win_rate:.1f}%</div>
-                        <div class="metric-label">Win Rate</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col4:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-blue">{sharpe:.2f}</div>
-                        <div class="metric-label">Sharpe Ratio</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col5:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-green">{max_win:+.1f}%</div>
-                        <div class="metric-label">Best Trade</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col6:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-red">{max_loss:+.1f}%</div>
-                        <div class="metric-label">Worst Trade</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
-                
-                # Exit Breakdown
-                st.markdown("""
-                <div class="section-header">
-                    <span class="section-icon">🚪</span>
-                    <span class="section-title">Exit Analysis</span>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                exit_groups = results.groupby('Exit Reason').agg({
-                    'Return': ['count', 'mean', 'sum']
-                }).reset_index()
-                exit_groups.columns = ['Exit Reason', 'Count', 'Avg Return', 'Total Return']
-                
-                cols = st.columns(len(exit_groups))
-                for i, (_, row) in enumerate(exit_groups.iterrows()):
-                    with cols[i]:
-                        pct = row['Count'] / n_trades * 100
-                        avg_ret = row['Avg Return'] * 100
-                        color = "#22c55e" if avg_ret > 0 else "#ef4444"
-                        
-                        # Determine icon
-                        if 'Stop' in row['Exit Reason']:
-                            icon = "🛑"
-                        elif 'Target' in row['Exit Reason']:
-                            icon = "🎯"
-                        else:
-                            icon = "📅"
-                        
-                        st.markdown(f"""
-                        <div class="exit-card">
-                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">{icon}</div>
-                            <div class="exit-count">{row['Count']}</div>
-                            <div class="exit-pct">{pct:.1f}% of trades</div>
-                            <div class="exit-return" style="color: {color};">{avg_ret:+.2f}% avg</div>
-                            <div class="exit-label">{row['Exit Reason']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                st.markdown("<div style='height: 1.5rem'></div>", unsafe_allow_html=True)
+                # Exit breakdown
+                st.write("**Exit Breakdown**")
+                exit_stats = results.groupby('Exit Reason').agg({'Return': ['count', 'mean', 'sum']}).round(4)
+                exit_stats.columns = ['Count', 'Avg Return', 'Total Return']
+                exit_stats['Avg Return'] = exit_stats['Avg Return'].apply(lambda x: f"{x*100:+.2f}%")
+                exit_stats['Total Return'] = exit_stats['Total Return'].apply(lambda x: f"{x*100:+.1f}%")
+                st.dataframe(exit_stats, use_container_width=True)
                 
                 # Charts
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     fig = go.Figure()
-                    
-                    # Create histogram with custom colors
-                    returns_pct = results['Return'] * 100
-                    colors = ['#22c55e' if x > 0 else '#ef4444' for x in returns_pct]
-                    
-                    fig.add_trace(go.Histogram(
-                        x=returns_pct,
-                        nbinsx=25,
-                        marker_color='#3b82f6',
-                        opacity=0.8
-                    ))
-                    
-                    # Add reference lines
-                    fig.add_vline(x=0, line_dash="dash", line_color="#64748b", line_width=1)
-                    fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444", line_width=2,
-                                  annotation_text=f"Stop {stop_loss*100:.0f}%", annotation_position="top")
-                    if profit_target:
-                        fig.add_vline(x=profit_target*100, line_dash="dash", line_color="#22c55e", line_width=2,
-                                      annotation_text=f"Target +{profit_target*100:.0f}%", annotation_position="top")
-                    
+                    fig.add_trace(go.Histogram(x=results['Return'] * 100, nbinsx=25, marker_color='#3b82f6'))
+                    fig.add_vline(x=0, line_dash="dash", line_color="#64748b")
+                    fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444")
                     fig.update_layout(
-                        title="Return Distribution",
-                        xaxis_title="Return %",
-                        yaxis_title="Count",
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=350,
-                        showlegend=False,
-                        margin=dict(t=50, b=50, l=50, r=30)
+                        title="Return Distribution", xaxis_title="Return %", yaxis_title="Count",
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8', height=300
                     )
-                    fig.update_xaxes(gridcolor='#1e293b', zerolinecolor='#334155')
-                    fig.update_yaxes(gridcolor='#1e293b')
-                    
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
                     results_sorted = results.sort_values('Earnings Date')
-                    results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod()
-                    results_sorted['Cumulative Pct'] = (results_sorted['Cumulative'] - 1) * 100
+                    results_sorted['Cumulative'] = (1 + results_sorted['Return']).cumprod() - 1
                     
                     fig = go.Figure()
-                    
                     fig.add_trace(go.Scatter(
                         x=list(range(1, len(results_sorted) + 1)),
-                        y=results_sorted['Cumulative Pct'],
-                        mode='lines',
-                        line=dict(color='#3b82f6', width=2),
-                        fill='tozeroy',
-                        fillcolor='rgba(59, 130, 246, 0.1)'
+                        y=results_sorted['Cumulative'] * 100,
+                        mode='lines', line=dict(color='#3b82f6', width=2)
                     ))
-                    
-                    fig.add_hline(y=0, line_dash="dash", line_color="#64748b", line_width=1)
-                    
+                    fig.add_hline(y=0, line_dash="dash", line_color="#64748b")
                     fig.update_layout(
-                        title="Cumulative Return",
-                        xaxis_title="Trade #",
-                        yaxis_title="Cumulative Return %",
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=350,
-                        showlegend=False,
-                        margin=dict(t=50, b=50, l=50, r=30)
+                        title="Cumulative Return", xaxis_title="Trade #", yaxis_title="Return %",
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8', height=300
                     )
-                    fig.update_xaxes(gridcolor='#1e293b')
-                    fig.update_yaxes(gridcolor='#1e293b')
-                    
                     st.plotly_chart(fig, use_container_width=True)
                 
-                # Trade List
-                st.markdown("""
-                <div class="section-header">
-                    <span class="section-icon">📋</span>
-                    <span class="section-title">Trade Log</span>
-                </div>
-                """, unsafe_allow_html=True)
-                
+                # Trade list
+                st.write("**All Trades**")
                 display_df = results.copy()
                 display_df['Return'] = display_df['Return'].apply(lambda x: f"{x*100:+.2f}%")
                 display_df['Max Return'] = display_df['Max Return'].apply(lambda x: f"{x*100:+.1f}%")
@@ -1129,26 +953,16 @@ with tab3:
                 if 'Earnings Date' in display_df.columns:
                     display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
                 
-                # Reorder columns
                 col_order = ['Ticker', 'Company', 'Earnings Date', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
                 col_order = [c for c in col_order if c in display_df.columns]
-                display_df = display_df[col_order]
-                
-                st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+                st.dataframe(display_df[col_order], use_container_width=True, hide_index=True, height=350)
         
-        # Comparison Section
-        st.markdown("<div style='height: 2rem'></div>", unsafe_allow_html=True)
-        st.markdown("""
-        <div class="section-header">
-            <span class="section-icon">⚖️</span>
-            <span class="section-title">Stop Loss Comparison</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # Comparison
+        st.markdown("---")
+        st.write("**Stop Loss Comparison**")
         
-        st.caption("Compare different stop loss levels to find the optimal risk/reward balance")
-        
-        if st.button("📊 Compare All Stop Levels", use_container_width=True):
-            with st.spinner("Analyzing stop loss levels..."):
+        if st.button("Compare All Stop Levels"):
+            with st.spinner("Analyzing..."):
                 stop_levels = [-0.02, -0.03, -0.04, -0.05, -0.06, -0.08, -0.10, -0.15]
                 
                 comparison = []
@@ -1167,105 +981,54 @@ with tab3:
                         
                         comparison.append({
                             'Stop Loss': f"{stop*100:.0f}%",
-                            'Stop Value': stop,
                             'Avg Return': avg_ret * 100,
                             'Win Rate': win_rate * 100,
                             'Total Return': total_ret * 100,
                             'Stopped %': stopped / len(res) * 100,
                             'Sharpe': sharpe,
-                            'Trades': len(res)
                         })
                 
                 comp_df = pd.DataFrame(comparison)
                 best_idx = comp_df['Sharpe'].idxmax()
+                best_stop = comp_df.loc[best_idx, 'Stop Loss']
                 
                 col1, col2 = st.columns([1.5, 1])
                 
                 with col1:
                     fig = make_subplots(specs=[[{"secondary_y": True}]])
-                    
-                    # Bar colors - highlight best
                     bar_colors = ['#22c55e' if i == best_idx else '#3b82f6' for i in range(len(comp_df))]
                     
                     fig.add_trace(
-                        go.Bar(
-                            x=comp_df['Stop Loss'],
-                            y=comp_df['Avg Return'],
-                            name='Avg Return %',
-                            marker_color=bar_colors,
-                            opacity=0.8
-                        ),
+                        go.Bar(x=comp_df['Stop Loss'], y=comp_df['Avg Return'], name='Avg Return %', marker_color=bar_colors),
                         secondary_y=False
                     )
-                    
                     fig.add_trace(
-                        go.Scatter(
-                            x=comp_df['Stop Loss'],
-                            y=comp_df['Sharpe'],
-                            name='Sharpe Ratio',
-                            mode='lines+markers',
-                            line=dict(color='#f59e0b', width=3),
-                            marker=dict(size=10)
-                        ),
+                        go.Scatter(x=comp_df['Stop Loss'], y=comp_df['Sharpe'], name='Sharpe',
+                                   mode='lines+markers', line=dict(color='#f59e0b', width=2)),
                         secondary_y=True
                     )
                     
                     fig.update_layout(
-                        title="Stop Loss Performance Comparison",
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=400,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                        margin=dict(t=80, b=50, l=50, r=50)
+                        title="Stop Loss Comparison",
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8', height=350,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.5, xanchor="center")
                     )
-                    fig.update_xaxes(gridcolor='#1e293b', title="Stop Loss Level")
-                    fig.update_yaxes(title_text="Avg Return %", secondary_y=False, gridcolor='#1e293b')
-                    fig.update_yaxes(title_text="Sharpe Ratio", secondary_y=True, gridcolor='#1e293b')
+                    fig.update_yaxes(title_text="Avg Return %", secondary_y=False)
+                    fig.update_yaxes(title_text="Sharpe", secondary_y=True)
                     
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
-                    # Summary card for best
-                    best_row = comp_df.loc[best_idx]
-                    st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.05) 100%); 
-                                border: 1px solid #22c55e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem;">
-                        <div style="color: #22c55e; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">
-                            🏆 Optimal Stop Loss
-                        </div>
-                        <div style="font-size: 2.5rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.5rem;">
-                            {best_row['Stop Loss']}
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                            <div>
-                                <div style="color: #94a3b8; font-size: 0.75rem;">Avg Return</div>
-                                <div style="color: #22c55e; font-weight: 600;">{best_row['Avg Return']:+.2f}%</div>
-                            </div>
-                            <div>
-                                <div style="color: #94a3b8; font-size: 0.75rem;">Sharpe</div>
-                                <div style="color: #f59e0b; font-weight: 600;">{best_row['Sharpe']:.2f}</div>
-                            </div>
-                            <div>
-                                <div style="color: #94a3b8; font-size: 0.75rem;">Win Rate</div>
-                                <div style="color: #f1f5f9; font-weight: 600;">{best_row['Win Rate']:.1f}%</div>
-                            </div>
-                            <div>
-                                <div style="color: #94a3b8; font-size: 0.75rem;">Stopped</div>
-                                <div style="color: #f1f5f9; font-weight: 600;">{best_row['Stopped %']:.1f}%</div>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Comparison table
-                    display_comp = comp_df[['Stop Loss', 'Avg Return', 'Win Rate', 'Sharpe', 'Stopped %']].copy()
+                    display_comp = comp_df.copy()
                     display_comp['Avg Return'] = display_comp['Avg Return'].apply(lambda x: f"{x:+.2f}%")
                     display_comp['Win Rate'] = display_comp['Win Rate'].apply(lambda x: f"{x:.1f}%")
+                    display_comp['Total Return'] = display_comp['Total Return'].apply(lambda x: f"{x:+.1f}%")
                     display_comp['Sharpe'] = display_comp['Sharpe'].apply(lambda x: f"{x:.2f}")
                     display_comp['Stopped %'] = display_comp['Stopped %'].apply(lambda x: f"{x:.1f}%")
                     
                     st.dataframe(display_comp, use_container_width=True, hide_index=True)
+                    st.info(f"Best by Sharpe: **{best_stop}**")
 
 # =============================================================================
 # TAB 4: POWERBI
