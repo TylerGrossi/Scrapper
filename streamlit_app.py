@@ -336,6 +336,26 @@ def load_returns_data():
         return None
 
 @st.cache_data(ttl=3600)
+def load_earnings_universe():
+    """Load earnings universe to get Date Check info."""
+    urls = [
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/earnings_universe.csv",
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/earnings_universe.csv",
+    ]
+    for url in urls:
+        try:
+            df = pd.read_csv(url)
+            if not df.empty and 'Date Check' in df.columns:
+                return df
+        except:
+            continue
+    try:
+        df = pd.read_csv('earnings_universe.csv')
+        return df
+    except:
+        return None
+
+@st.cache_data(ttl=3600)
 def load_daily_prices():
     urls = [
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/daily_prices.csv",
@@ -358,6 +378,17 @@ def load_daily_prices():
     except:
         return None
 
+def filter_date_passed(daily_df, earnings_df):
+    """Filter out tickers with DATE PASSED from daily prices."""
+    if earnings_df is None or 'Date Check' not in earnings_df.columns:
+        return daily_df
+    
+    date_passed_tickers = earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist()
+    if date_passed_tickers:
+        filtered_df = daily_df[~daily_df['Ticker'].isin(date_passed_tickers)]
+        return filtered_df
+    return daily_df
+
 def calc_period_stats(df, col):
     valid = df[col].dropna()
     if len(valid) == 0:
@@ -378,7 +409,7 @@ def calc_period_stats(df, col):
 def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
     """
     Backtest strategy. If stop_loss is None, no stop loss is applied.
-    Only includes trades that have data for the full holding period (Day 5).
+    Uses the closest available day to max_days for exit (to handle market holidays/weekends).
     """
     results = []
     trades = daily_df.groupby(['Ticker', 'Earnings Date', 'Fiscal Quarter']).size().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter']]
@@ -391,20 +422,28 @@ def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
         trade_data = daily_df[
             (daily_df['Ticker'] == ticker) & 
             (daily_df['Earnings Date'] == earnings_date) &
-            (daily_df['Days From Earnings'] >= 0) &
-            (daily_df['Days From Earnings'] <= max_days)
+            (daily_df['Days From Earnings'] >= 0)
         ].sort_values('Days From Earnings')
         
         if trade_data.empty:
             continue
         
-        # Check if we have Day 5 data (or max_days) - skip trades without full data
-        day_5_data = trade_data[trade_data['Days From Earnings'] == max_days]
-        if day_5_data.empty:
+        # Find the closest day to max_days (within range max_days-1 to max_days+2)
+        # This handles weekends and holidays
+        exit_day_data = None
+        for target_day in [max_days, max_days + 1, max_days - 1, max_days + 2]:
+            day_data = trade_data[trade_data['Days From Earnings'] == target_day]
+            if not day_data.empty:
+                exit_day_data = day_data
+                break
+        
+        if exit_day_data is None:
             continue
         
-        day_5_return = day_5_data['Return From Earnings (%)'].iloc[0]
-        if pd.isna(day_5_return):
+        exit_day_return = exit_day_data['Return From Earnings (%)'].iloc[0]
+        actual_exit_day = int(exit_day_data['Days From Earnings'].iloc[0])
+        
+        if pd.isna(exit_day_return):
             continue
         
         company_name = trade_data['Company Name'].iloc[0] if 'Company Name' in trade_data.columns else ticker
@@ -416,10 +455,13 @@ def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
         min_return = 0
         stopped_out = False
         
-        # Check each day for stop loss (if stop_loss is set)
+        # Check each day up to actual_exit_day for stop loss
         for _, day in trade_data.iterrows():
             day_num = int(day['Days From Earnings'])
             day_return = day['Return From Earnings (%)']
+            
+            if day_num > actual_exit_day:
+                break
             
             if pd.isna(day_return):
                 continue
@@ -436,11 +478,11 @@ def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
                 stopped_out = True
                 break
         
-        # If not stopped out, exit at Day 5
+        # If not stopped out, exit at the target day
         if not stopped_out:
-            exit_day = max_days
-            exit_reason = f'Day {max_days} Exit'
-            exit_return = day_5_return / 100
+            exit_day = actual_exit_day
+            exit_reason = f'Day {actual_exit_day} Exit'
+            exit_return = exit_day_return / 100
         
         results.append({
             'Ticker': ticker,
@@ -824,10 +866,24 @@ with tab2:
 with tab3:
     daily_df = load_daily_prices()
     returns_df = load_returns_data()
+    earnings_df = load_earnings_universe()
+    
+    # Filter out DATE PASSED tickers
+    if daily_df is not None and earnings_df is not None:
+        date_passed_tickers = earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist() if 'Date Check' in earnings_df.columns else []
+        if date_passed_tickers:
+            daily_df = daily_df[~daily_df['Ticker'].isin(date_passed_tickers)]
+    
     has_daily = daily_df is not None and not daily_df.empty
     has_returns = returns_df is not None and not returns_df.empty
     
     st.subheader("Strategy Backtest")
+    
+    # Show filtered info
+    if earnings_df is not None and 'Date Check' in earnings_df.columns:
+        date_passed_count = len(earnings_df[earnings_df['Date Check'] == 'DATE PASSED'])
+        if date_passed_count > 0:
+            st.caption(f"Filtered out {date_passed_count} tickers with incorrect earnings dates")
     
     if not has_daily and not has_returns:
         st.warning("No data available. Upload daily_prices.csv or returns_tracker.csv.")
