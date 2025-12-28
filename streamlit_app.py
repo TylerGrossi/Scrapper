@@ -356,38 +356,41 @@ def load_earnings_universe():
         return None
 
 @st.cache_data(ttl=3600)
-def load_daily_prices():
+def load_hourly_prices():
+    """Load hourly prices data."""
     urls = [
-        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/daily_prices.csv",
-        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/daily_prices.csv",
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/hourly_prices.csv",
+        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/hourly_prices.csv",
     ]
     for url in urls:
         try:
             df = pd.read_csv(url)
-            if not df.empty and 'Days From Earnings' in df.columns:
+            if not df.empty and 'Trading Day' in df.columns:
+                df['Datetime'] = pd.to_datetime(df['Datetime'], errors='coerce')
                 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
                 df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
                 return df
         except:
             continue
     try:
-        df = pd.read_csv('daily_prices.csv')
+        df = pd.read_csv('hourly_prices.csv')
+        df['Datetime'] = pd.to_datetime(df['Datetime'], errors='coerce')
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Earnings Date'] = pd.to_datetime(df['Earnings Date'], errors='coerce')
         return df
     except:
         return None
 
-def filter_date_passed(daily_df, earnings_df):
-    """Filter out tickers with DATE PASSED from daily prices."""
+def filter_date_passed(hourly_df, earnings_df):
+    """Filter out tickers with DATE PASSED from hourly prices."""
     if earnings_df is None or 'Date Check' not in earnings_df.columns:
-        return daily_df
+        return hourly_df
     
     date_passed_tickers = earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist()
     if date_passed_tickers:
-        filtered_df = daily_df[~daily_df['Ticker'].isin(date_passed_tickers)]
+        filtered_df = hourly_df[~hourly_df['Ticker'].isin(date_passed_tickers)]
         return filtered_df
-    return daily_df
+    return hourly_df
 
 def calc_period_stats(df, col):
     valid = df[col].dropna()
@@ -406,47 +409,52 @@ def calc_period_stats(df, col):
 # BACKTEST FUNCTIONS
 # =============================================================================
 
-def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
+def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
     """
-    Backtest strategy. If stop_loss is None, no stop loss is applied.
-    Uses the closest available day to max_days for exit (to handle market holidays/weekends).
+    Backtest strategy using hourly data. If stop_loss is None, no stop loss is applied.
+    Uses the end of day close on max_days for exit.
     """
     results = []
-    trades = daily_df.groupby(['Ticker', 'Earnings Date', 'Fiscal Quarter']).size().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter']]
+    
+    # Group by trade (Ticker + Earnings Date + Fiscal Quarter)
+    trades = hourly_df.groupby(['Ticker', 'Earnings Date', 'Fiscal Quarter']).size().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter']]
     
     for _, trade in trades.iterrows():
         ticker = trade['Ticker']
         earnings_date = trade['Earnings Date']
         fiscal_quarter = trade['Fiscal Quarter']
         
-        trade_data = daily_df[
-            (daily_df['Ticker'] == ticker) & 
-            (daily_df['Earnings Date'] == earnings_date) &
-            (daily_df['Days From Earnings'] >= 0)
-        ].sort_values('Days From Earnings')
+        # Get all hourly data for this trade
+        trade_data = hourly_df[
+            (hourly_df['Ticker'] == ticker) & 
+            (hourly_df['Earnings Date'] == earnings_date) &
+            (hourly_df['Trading Day'] >= 1)  # Only data after base price
+        ].sort_values('Datetime')
         
         if trade_data.empty:
             continue
         
-        # Find the closest day to max_days (within range max_days-1 to max_days+2)
-        # This handles weekends and holidays
-        exit_day_data = None
-        for target_day in [max_days, max_days + 1, max_days - 1, max_days + 2]:
-            day_data = trade_data[trade_data['Days From Earnings'] == target_day]
-            if not day_data.empty:
-                exit_day_data = day_data
-                break
+        # Get the last hour of max_days (end of day close)
+        exit_day_data = trade_data[trade_data['Trading Day'] == max_days]
+        if exit_day_data.empty:
+            # Try adjacent days if exact day not available
+            for target_day in [max_days - 1, max_days + 1]:
+                exit_day_data = trade_data[trade_data['Trading Day'] == target_day]
+                if not exit_day_data.empty:
+                    break
         
-        if exit_day_data is None:
+        if exit_day_data.empty:
             continue
         
-        exit_day_return = exit_day_data['Return From Earnings (%)'].iloc[0]
-        actual_exit_day = int(exit_day_data['Days From Earnings'].iloc[0])
+        # Get the last hour's return (end of day)
+        exit_day_return = exit_day_data['Return From Earnings (%)'].iloc[-1]
+        actual_exit_day = int(exit_day_data['Trading Day'].iloc[-1])
         
         if pd.isna(exit_day_return):
             continue
         
         company_name = trade_data['Company Name'].iloc[0] if 'Company Name' in trade_data.columns else ticker
+        base_price = trade_data['Base Price'].iloc[0] if 'Base Price' in trade_data.columns else None
         
         exit_day = None
         exit_reason = None
@@ -455,30 +463,30 @@ def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
         min_return = 0
         stopped_out = False
         
-        # Check each day up to actual_exit_day for stop loss
-        for _, day in trade_data.iterrows():
-            day_num = int(day['Days From Earnings'])
-            day_return = day['Return From Earnings (%)']
+        # Check each hour for stop loss
+        for _, hour_data in trade_data.iterrows():
+            trading_day = int(hour_data['Trading Day'])
+            hour_return = hour_data['Return From Earnings (%)']
             
-            if day_num > actual_exit_day:
+            if trading_day > actual_exit_day:
                 break
             
-            if pd.isna(day_return):
+            if pd.isna(hour_return):
                 continue
             
-            day_return_decimal = day_return / 100
-            max_return = max(max_return, day_return_decimal)
-            min_return = min(min_return, day_return_decimal)
+            hour_return_decimal = hour_return / 100
+            max_return = max(max_return, hour_return_decimal)
+            min_return = min(min_return, hour_return_decimal)
             
             # Check stop loss (only if stop_loss is provided)
-            if stop_loss is not None and day_return_decimal <= stop_loss:
-                exit_day = day_num
+            if stop_loss is not None and hour_return_decimal <= stop_loss:
+                exit_day = trading_day
                 exit_reason = 'Stop Loss'
                 exit_return = stop_loss
                 stopped_out = True
                 break
         
-        # If not stopped out, exit at the target day
+        # If not stopped out, exit at the target day close
         if not stopped_out:
             exit_day = actual_exit_day
             exit_reason = f'Day {actual_exit_day} Exit'
@@ -489,6 +497,7 @@ def backtest_with_daily_prices(daily_df, stop_loss=None, max_days=5):
             'Company': company_name,
             'Earnings Date': earnings_date,
             'Fiscal Quarter': fiscal_quarter,
+            'Base Price': base_price,
             'Exit Day': exit_day,
             'Exit Reason': exit_reason,
             'Return': exit_return,
@@ -864,20 +873,24 @@ with tab2:
 # TAB 3: BACKTEST
 # =============================================================================
 with tab3:
-    daily_df = load_daily_prices()
+    hourly_df = load_hourly_prices()
     returns_df = load_returns_data()
     earnings_df = load_earnings_universe()
     
     # Filter out DATE PASSED tickers
-    if daily_df is not None and earnings_df is not None:
+    if hourly_df is not None and earnings_df is not None:
         date_passed_tickers = earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist() if 'Date Check' in earnings_df.columns else []
         if date_passed_tickers:
-            daily_df = daily_df[~daily_df['Ticker'].isin(date_passed_tickers)]
+            hourly_df = hourly_df[~hourly_df['Ticker'].isin(date_passed_tickers)]
     
-    has_daily = daily_df is not None and not daily_df.empty
+    has_hourly = hourly_df is not None and not hourly_df.empty
     has_returns = returns_df is not None and not returns_df.empty
     
     st.subheader("Strategy Backtest")
+    
+    # Show data info
+    if has_hourly:
+        st.caption(f"Using hourly price data ({len(hourly_df)} data points, {hourly_df['Ticker'].nunique()} tickers)")
     
     # Show filtered info
     if earnings_df is not None and 'Date Check' in earnings_df.columns:
@@ -885,16 +898,17 @@ with tab3:
         if date_passed_count > 0:
             st.caption(f"Filtered out {date_passed_count} tickers with incorrect earnings dates")
     
-    if not has_daily and not has_returns:
-        st.warning("No data available. Upload daily_prices.csv or returns_tracker.csv.")
+    if not has_hourly and not has_returns:
+        st.warning("No data available. Upload hourly_prices.csv or returns_tracker.csv.")
         col1, col2 = st.columns(2)
         with col1:
-            daily_upload = st.file_uploader("Upload daily_prices.csv:", type=['csv'], key='daily')
-            if daily_upload:
-                daily_df = pd.read_csv(daily_upload)
-                daily_df['Date'] = pd.to_datetime(daily_df['Date'], errors='coerce')
-                daily_df['Earnings Date'] = pd.to_datetime(daily_df['Earnings Date'], errors='coerce')
-                has_daily = True
+            hourly_upload = st.file_uploader("Upload hourly_prices.csv:", type=['csv'], key='hourly')
+            if hourly_upload:
+                hourly_df = pd.read_csv(hourly_upload)
+                hourly_df['Datetime'] = pd.to_datetime(hourly_df['Datetime'], errors='coerce')
+                hourly_df['Date'] = pd.to_datetime(hourly_df['Date'], errors='coerce')
+                hourly_df['Earnings Date'] = pd.to_datetime(hourly_df['Earnings Date'], errors='coerce')
+                has_hourly = True
         with col2:
             returns_upload = st.file_uploader("Upload returns_tracker.csv:", type=['csv'], key='returns')
             if returns_upload:
@@ -902,7 +916,7 @@ with tab3:
                 returns_df['Earnings Date'] = pd.to_datetime(returns_df['Earnings Date'], errors='coerce')
                 has_returns = True
     
-    if has_daily or has_returns:
+    if has_hourly or has_returns:
         # Parameters
         col1, col2 = st.columns(2)
         
@@ -920,9 +934,9 @@ with tab3:
         st.markdown("---")
         
         # Run both backtests: without stop loss and with stop loss
-        if has_daily:
-            results_no_stop = backtest_with_daily_prices(daily_df, stop_loss=None, max_days=max_days)
-            results_with_stop = backtest_with_daily_prices(daily_df, stop_loss=stop_loss, max_days=max_days)
+        if has_hourly:
+            results_no_stop = backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=max_days)
+            results_with_stop = backtest_with_hourly_prices(hourly_df, stop_loss=stop_loss, max_days=max_days)
         else:
             results_no_stop = backtest_strategy_legacy(returns_df, stop_loss=None, max_days=max_days)
             results_with_stop = backtest_strategy_legacy(returns_df, stop_loss=stop_loss, max_days=max_days)
@@ -1054,7 +1068,7 @@ with tab3:
             if 'Earnings Date' in display_df.columns:
                 display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
             
-            col_order = ['Ticker', 'Company', 'Earnings Date', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
+            col_order = ['Ticker', 'Company', 'Earnings Date', 'Fiscal Quarter', 'Exit Day', 'Exit Reason', 'Return', 'Max Return', 'Min Return']
             col_order = [c for c in col_order if c in display_df.columns]
             st.dataframe(display_df[col_order], use_container_width=True, hide_index=True, height=300)
             
@@ -1067,8 +1081,8 @@ with tab3:
                 
                 comparison = []
                 for stop in stop_levels:
-                    if has_daily:
-                        res = backtest_with_daily_prices(daily_df, stop_loss=stop, max_days=max_days)
+                    if has_hourly:
+                        res = backtest_with_hourly_prices(hourly_df, stop_loss=stop, max_days=max_days)
                     else:
                         res = backtest_strategy_legacy(returns_df, stop_loss=stop, max_days=max_days)
                     
