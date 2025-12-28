@@ -1,11 +1,10 @@
 # ================================================
 # Earnings Momentum Quant Model - with Barchart Filter
 # ================================================
-# UPDATES v15:
-#   - Fixed pandas dtype warning for Earnings Date (yfinance)
-#   - Added "Date Check" column: "OK" or "DATE PASSED" 
-#   - Removed old unused columns (Earnings Raw, Exact Earnings Date)
-#   - Cleaned up column order
+# UPDATES v16 (HOURLY):
+#   - Changed export_daily_prices to export_hourly_prices
+#   - Returns hourly data for 5 days after buy signal
+#   - Uses yfinance interval="1h" for intraday data
 # ================================================
 
 import requests
@@ -22,7 +21,7 @@ import time, re, os
 
 UNIVERSE_FILE = "earnings_universe.csv"
 RETURNS_FILE  = "returns_tracker.csv"
-PRICES_FILE   = "daily_prices.csv"
+PRICES_FILE   = "hourly_prices.csv"  # Changed from daily_prices.csv
          
 FINVIZ_SCREENER = "https://finviz.com/screener.ashx?v=111&f=earningsdate_thisweek,ta_sma20_cross50a"
 HEADERS = {
@@ -196,57 +195,123 @@ def scrape_yahoo_calendar(date):
 
 
 # ============================================================================
-# Fiscal Quarter
+# Fiscal Quarter - Get directly from yfinance API
 # ============================================================================
 def get_fiscal_quarter(ticker, earnings_date):
+    """
+    Get the fiscal quarter directly from yfinance earnings_history.
+    Matches the earnings announcement date to the fiscal quarter end date.
+    Returns format like "Q2 FY26".
+    """
     try:
-        info = yf.Ticker(ticker).info
-        fy_end = 12
-        if info.get('lastFiscalYearEnd'):
-            try: fy_end = datetime.fromtimestamp(info['lastFiscalYearEnd']).month
-            except: pass
+        yf_ticker = yf.Ticker(ticker)
+        target = earnings_date.date() if hasattr(earnings_date, 'date') else pd.to_datetime(earnings_date).date()
         
-        m, y = earnings_date.month, earnings_date.year
+        # Get earnings_history - this has quarter end dates as index
+        try:
+            hist = yf_ticker.earnings_history
+            if hist is not None and not hist.empty:
+                # hist.index contains quarter END dates (e.g., 2025-11-30 for Q2 FY26)
+                # Earnings are announced 15-45 days after quarter end
+                
+                best_quarter_end = None
+                min_diff = 999
+                
+                for q_end in hist.index:
+                    q_end_date = q_end.date() if hasattr(q_end, 'date') else pd.to_datetime(q_end).date()
+                    # Days between quarter end and earnings announcement
+                    days_after = (target - q_end_date).days
+                    # Earnings typically announced 15-60 days after quarter end
+                    if 10 <= days_after <= 75:
+                        if days_after < min_diff:
+                            min_diff = days_after
+                            best_quarter_end = q_end_date
+                
+                if best_quarter_end:
+                    # Now determine fiscal quarter from the quarter end date
+                    # Need to get fiscal year end month
+                    info = yf_ticker.info
+                    fy_end_month = None
+                    
+                    if info.get('lastFiscalYearEnd'):
+                        try:
+                            fy_end_month = datetime.fromtimestamp(info['lastFiscalYearEnd']).month
+                        except:
+                            pass
+                    
+                    # If we couldn't get it, try to infer from the quarter end dates
+                    if fy_end_month is None:
+                        # Look at the pattern of quarter ends
+                        q_months = sorted(set([q.month if hasattr(q, 'month') else pd.to_datetime(q).month for q in hist.index]))
+                        # Q4 end = fiscal year end
+                        # Common patterns: [2,5,8,11] for May FY, [3,6,9,12] for Dec FY
+                        if q_months:
+                            # The highest month that's a quarter end before a gap is likely Q4
+                            # For simplicity, assume Q4 is the month that when +3 isn't in the list
+                            for m in q_months:
+                                next_q = (m + 3) % 12 or 12
+                                if next_q not in q_months:
+                                    fy_end_month = m
+                                    break
+                            if fy_end_month is None:
+                                fy_end_month = max(q_months)  # fallback
+                    
+                    if fy_end_month is None:
+                        fy_end_month = 12  # default to calendar year
+                    
+                    # Calculate fiscal quarter number and fiscal year
+                    q_month = best_quarter_end.month
+                    q_year = best_quarter_end.year
+                    
+                    # Quarter months relative to FY end
+                    # Example: FY ends December (month 12)
+                    #   Q1 ends Mar (month 3):  months_after = (3-12) % 12 = 3  → Q1
+                    #   Q2 ends Jun (month 6):  months_after = (6-12) % 12 = 6  → Q2
+                    #   Q3 ends Sep (month 9):  months_after = (9-12) % 12 = 9  → Q3
+                    #   Q4 ends Dec (month 12): months_after = (12-12) % 12 = 0 → Q4
+                    #
+                    # Example: FY ends May (month 5) - like MLKN
+                    #   Q1 ends Aug (month 8):  months_after = (8-5) % 12 = 3   → Q1
+                    #   Q2 ends Nov (month 11): months_after = (11-5) % 12 = 6  → Q2
+                    #   Q3 ends Feb (month 2):  months_after = (2-5) % 12 = 9   → Q3
+                    #   Q4 ends May (month 5):  months_after = (5-5) % 12 = 0   → Q4
+                    
+                    months_after_fy = (q_month - fy_end_month) % 12
+                    
+                    if months_after_fy == 0:
+                        q_num = 4
+                    elif months_after_fy <= 3:
+                        q_num = 1
+                    elif months_after_fy <= 6:
+                        q_num = 2
+                    else:  # months_after_fy <= 9
+                        q_num = 3
+                    
+                    # Determine fiscal year
+                    # The fiscal year is named by the CALENDAR YEAR in which it ENDS
+                    # For Dec FY: Q1-Q4 of FY25 all end in calendar 2025, FY = 2025
+                    # For May FY: Q1 ends Aug 2025, Q2 ends Nov 2025, Q3 ends Feb 2026, Q4 ends May 2026 → FY26
+                    #             Q1 ends Aug 2024, Q2 ends Nov 2024, Q3 ends Feb 2025, Q4 ends May 2025 → FY25
+                    
+                    if q_month > fy_end_month:
+                        # We're in Q1 or Q2 of the NEXT fiscal year
+                        # e.g., Aug 2025 with May FY end → Q1 of FY26 (ends May 2026)
+                        fy = q_year + 1
+                    else:
+                        # We're in Q3 or Q4 of the CURRENT fiscal year
+                        # e.g., Feb 2026 with May FY end → Q3 of FY26 (ends May 2026)
+                        # e.g., Sep 2025 with Dec FY end → Q3 of FY25 (ends Dec 2025)
+                        fy = q_year
+                    
+                    return f"Q{q_num} FY{str(fy)[2:]}"
+        except Exception as e:
+            print(f"    earnings_history error: {e}")
         
-        if fy_end == 12:
-            if m in [1,2]: return f"Q4 {y-1}"
-            elif m in [3,4,5]: return f"Q1 {y}"
-            elif m in [6,7,8]: return f"Q2 {y}"
-            elif m in [9,10,11]: return f"Q3 {y}"
-            else: return f"Q4 {y}"
-        elif fy_end == 3:
-            if m in [4,5]: return f"Q4 {y}"
-            elif m in [6,7,8]: return f"Q1 {y+1}"
-            elif m in [9,10,11]: return f"Q2 {y+1}"
-            elif m == 12: return f"Q3 {y+1}"
-            elif m in [1,2]: return f"Q3 {y}"
-            else: return f"Q4 {y}"
-        elif fy_end == 6:
-            if m in [7,8]: return f"Q4 {y}"
-            elif m in [9,10,11]: return f"Q1 {y+1}"
-            elif m == 12: return f"Q2 {y+1}"
-            elif m in [1,2]: return f"Q2 {y}"
-            elif m in [3,4,5]: return f"Q3 {y}"
-            else: return f"Q4 {y}"
-        elif fy_end == 9:
-            if m in [10,11]: return f"Q4 {y}"
-            elif m == 12: return f"Q1 {y+1}"
-            elif m in [1,2]: return f"Q1 {y}"
-            elif m in [3,4,5]: return f"Q2 {y}"
-            elif m in [6,7,8]: return f"Q3 {y}"
-            else: return f"Q4 {y}"
-        else:
-            fy = y+1 if m > fy_end else y
-            offset = (m - fy_end - 1) % 12
-            q = 1 if offset < 3 else (2 if offset < 6 else (3 if offset < 9 else 4))
-            return f"Q{q} {fy}"
-    except:
-        m, y = earnings_date.month, earnings_date.year
-        if m in [1,2]: return f"Q4 {y-1}"
-        elif m in [3,4,5]: return f"Q1 {y}"
-        elif m in [6,7,8]: return f"Q2 {y}"
-        elif m in [9,10,11]: return f"Q3 {y}"
-        else: return f"Q4 {y}"
+        return None
+        
+    except Exception as e:
+        print(f"    Error getting fiscal quarter for {ticker}: {e}")
+        return None
 
 
 # ============================================================================
@@ -502,13 +567,14 @@ def clean_columns(df):
 
 
 # ------------------------------------
-# EXPORT DAILY PRICES FOR POWERBI
+# EXPORT HOURLY PRICES FOR POWERBI
 # ------------------------------------
-def export_daily_prices(udf, days_before=5, days_after=30):
+def export_hourly_prices(udf, days_after=5):
     """
-    Export daily prices for each ticker for PowerBI charting.
-    Creates a long-format CSV with: Ticker, Date, Close, Earnings Date, Days From Earnings, Return From Earnings
-    Only includes trading days within days_before/days_after of each ticker's earnings date.
+    Export HOURLY prices for each ticker for PowerBI charting.
+    Creates a long-format CSV with: Ticker, Datetime, Close, Earnings Date, Hours From Earnings, Return From Earnings
+    
+    Note: yfinance only provides hourly data for the last 730 days (about 2 years).
     """
     if udf is None or udf.empty:
         print("No data to export prices.")
@@ -525,22 +591,12 @@ def export_daily_prices(udf, days_before=5, days_after=30):
     
     tickers = valid["Ticker"].unique().tolist()
     
-    # Calculate date range needed (wide range for download, we'll filter per ticker later)
-    min_date = valid["Earnings Date"].min() - timedelta(days=days_before + 10)
-    max_date = valid["Earnings Date"].max() + timedelta(days=days_after + 10)
-    
-    # Cap max_date at today
-    today = datetime.today()
-    if max_date > today:
-        max_date = today + timedelta(days=1)
-    
-    print(f"\n📈 Exporting daily prices for {len(tickers)} tickers...")
-    print(f"   Range: {days_before} days before to {days_after} days after earnings")
-    
-    # Download all prices
-    px = yf.download(tickers, start=min_date, end=max_date, group_by="ticker", auto_adjust=True, progress=False)
+    print(f"\n📈 Exporting HOURLY prices for {len(tickers)} tickers...")
+    print(f"   Range: {days_after} trading days after earnings")
     
     rows = []
+    
+    # Process each ticker individually for hourly data
     for _, r in valid.iterrows():
         t = r["Ticker"]
         earnings_date = r["Earnings Date"]
@@ -548,75 +604,161 @@ def export_daily_prices(udf, days_before=5, days_after=30):
         company_name = r.get("Company Name", t)
         timing = r.get("Earnings Timing", "")
         
-        # Calculate date window for this ticker
-        window_start = (earnings_date - timedelta(days=days_before)).date()
-        window_end = (earnings_date + timedelta(days=days_after)).date()
-        
         try:
-            # Get price series for this ticker
-            if len(tickers) > 1:
-                if t not in px.columns.get_level_values(0):
-                    continue
-                prices = px[t]["Close"].dropna()
-            else:
-                prices = px["Close"].dropna()
+            # Calculate date range for this ticker
+            # Start from day before earnings to capture pre-market
+            start_date = earnings_date - timedelta(days=1)
+            # End date: add extra days to account for weekends/holidays
+            end_date = earnings_date + timedelta(days=days_after + 5)
             
-            if prices.empty:
+            # Cap at today
+            today = datetime.today()
+            if end_date > today:
+                end_date = today + timedelta(days=1)
+            
+            print(f"   {t}: Downloading hourly data...")
+            
+            # Download hourly data for this ticker
+            ticker_obj = yf.Ticker(t)
+            hourly_data = ticker_obj.history(
+                start=start_date.strftime('%Y-%m-%d'),
+                end=end_date.strftime('%Y-%m-%d'),
+                interval="1h"
+            )
+            
+            if hourly_data.empty:
+                print(f"      No hourly data available")
                 continue
             
-            # Get base price (day before earnings for BMO, earnings day for AMC)
-            base_date = earnings_date.date()
-            if timing == "BMO":
-                base_prices = prices[prices.index.date < base_date]
-                base_price = base_prices.iloc[-1] if not base_prices.empty else None
-            else:
-                base_prices = prices[prices.index.date <= base_date]
-                base_price = base_prices.iloc[-1] if not base_prices.empty else None
+            prices = hourly_data["Close"].dropna()
             
-            # Create row for each trading day WITHIN THE WINDOW
-            for date_idx, close_price in prices.items():
-                trade_date = date_idx.date() if hasattr(date_idx, 'date') else pd.to_datetime(date_idx).date()
+            if prices.empty:
+                print(f"      No close prices")
+                continue
+            
+            # Convert index to timezone-naive for comparison
+            # yfinance returns timezone-aware timestamps (America/New_York)
+            prices.index = prices.index.tz_localize(None)
+            
+            # Determine the base price and reference time
+            # For BMO: use previous day's close
+            # For AMC: use that day's close (end of regular hours)
+            earnings_dt = pd.Timestamp(earnings_date).tz_localize(None)
+            
+            if timing == "BMO":
+                # Base price = last price before market open on earnings day
+                # Find prices from the day before
+                base_cutoff = earnings_dt.replace(hour=0, minute=0, second=0)
+                base_prices = prices[prices.index < base_cutoff]
+                if not base_prices.empty:
+                    base_price = base_prices.iloc[-1]
+                    base_time = base_prices.index[-1]
+                else:
+                    print(f"      No base price found for BMO")
+                    continue
+            else:  # AMC or unknown
+                # Base price = close on earnings day (around 4pm)
+                base_cutoff = earnings_dt.replace(hour=16, minute=0, second=0)
+                base_prices = prices[prices.index <= base_cutoff]
+                if not base_prices.empty:
+                    base_price = base_prices.iloc[-1]
+                    base_time = base_prices.index[-1]
+                else:
+                    print(f"      No base price found for AMC")
+                    continue
+            
+            print(f"      Base: ${base_price:.2f} at {base_time}")
+            
+            # Count trading days after earnings
+            # To match 5D return: we need data through the END of trading day 5
+            # Trading day 1 = first full day after base price
+            # Trading day 5 = fifth day after base price (where 5D return is calculated)
+            trading_days_count = 0
+            last_trading_date = None
+            base_date = base_time.date() if hasattr(base_time, 'date') else pd.to_datetime(base_time).date()
+            
+            for dt_idx, close_price in prices.items():
+                # Convert to datetime if needed
+                if hasattr(dt_idx, 'to_pydatetime'):
+                    dt = dt_idx.to_pydatetime()
+                else:
+                    dt = pd.to_datetime(dt_idx).to_pydatetime()
                 
-                # Skip if outside the window for this ticker
-                if trade_date < window_start or trade_date > window_end:
+                # Make sure dt is timezone-naive
+                if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                
+                # Convert base_time to comparable format
+                base_time_cmp = base_time.to_pydatetime() if hasattr(base_time, 'to_pydatetime') else base_time
+                if hasattr(base_time_cmp, 'tzinfo') and base_time_cmp.tzinfo is not None:
+                    base_time_cmp = base_time_cmp.replace(tzinfo=None)
+                
+                # Skip if before or equal to base time
+                if dt <= base_time_cmp:
                     continue
                 
-                days_from_earnings = (trade_date - earnings_date.date()).days
+                # Track trading days - count days AFTER base date
+                current_date = dt.date()
+                if last_trading_date is None:
+                    # First data point after base
+                    trading_days_count = 1
+                    last_trading_date = current_date
+                elif current_date > last_trading_date:
+                    # New trading day
+                    trading_days_count += 1
+                    last_trading_date = current_date
+                
+                # Stop AFTER we've collected all of trading day 5
+                # (days_after = 5, so stop when we hit day 6)
+                if trading_days_count > days_after:
+                    break
+                
+                # Calculate hours from base time
+                hours_from_earnings = (dt - base_time_cmp).total_seconds() / 3600
                 
                 # Calculate return from earnings base price
-                return_from_earnings = None
-                if base_price is not None and base_price > 0:
-                    if timing == "BMO" and trade_date >= base_date:
-                        return_from_earnings = (close_price / base_price - 1) * 100
-                    elif timing != "BMO" and trade_date > base_date:
-                        return_from_earnings = (close_price / base_price - 1) * 100
-                    elif timing != "BMO" and trade_date == base_date:
-                        return_from_earnings = 0.0
+                return_from_earnings = ((close_price / base_price) - 1) * 100
                 
                 rows.append({
                     "Ticker": t,
                     "Company Name": company_name,
                     "Fiscal Quarter": fiscal_quarter,
-                    "Date": trade_date,
+                    "Datetime": dt,
+                    "Date": dt.date(),
+                    "Time": dt.strftime("%H:%M"),
+                    "Hour": dt.hour,
                     "Close": round(close_price, 2),
-                    "Earnings Date": earnings_date.date(),
+                    "Earnings Date": earnings_date.date() if hasattr(earnings_date, 'date') else earnings_date,
                     "Earnings Timing": timing,
-                    "Days From Earnings": days_from_earnings,
-                    "Return From Earnings (%)": round(return_from_earnings, 2) if return_from_earnings is not None else None
+                    "Base Price": round(base_price, 2),
+                    "Hours From Earnings": round(hours_from_earnings, 1),
+                    "Trading Day": trading_days_count,
+                    "Return From Earnings (%)": round(return_from_earnings, 2)
                 })
+            
+            print(f"      Collected {len([r for r in rows if r['Ticker'] == t])} hourly points")
+            time.sleep(0.5)  # Rate limiting
+            
         except Exception as e:
             print(f"   Error processing {t}: {e}")
             continue
     
     if not rows:
-        print("   No price data collected.")
+        print("   No hourly price data collected.")
         return
     
     df = pd.DataFrame(rows)
-    df = df.sort_values(["Ticker", "Fiscal Quarter", "Date"]).reset_index(drop=True)
+    df = df.sort_values(["Ticker", "Fiscal Quarter", "Datetime"]).reset_index(drop=True)
     
     df.to_csv(PRICES_FILE, index=False)
     print(f"✅ Saved {PRICES_FILE} ({len(df)} rows, {df['Ticker'].nunique()} tickers)")
+    
+    # Print summary statistics
+    print(f"\n📊 Summary:")
+    print(f"   Total hourly data points: {len(df)}")
+    print(f"   Unique tickers: {df['Ticker'].nunique()}")
+    print(f"   Date range: {df['Date'].min()} to {df['Date'].max()}")
+    print(f"   Avg points per ticker: {len(df) / df['Ticker'].nunique():.0f}")
 
 
 # ------------------------------------
@@ -790,13 +932,13 @@ def update_returns(udf):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("EARNINGS MOMENTUM v15")
+    print("EARNINGS MOMENTUM v16 (HOURLY)")
     print(f"📅 {datetime.today().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
     
     universe = build_universe()
     update_returns(universe)
-    export_daily_prices(universe)
+    export_hourly_prices(universe, days_after=5)  # Changed to hourly
     
     print("\n" + "=" * 60)
     print("COMPLETE")
