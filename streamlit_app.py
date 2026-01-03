@@ -1437,11 +1437,23 @@ with tab3:
                     st.markdown("**Stopped Out Trades Detail:**")
                     stopped_display = stopped_trades[['Ticker', 'Earnings Date', 'Exit Day', 'Exit Hour', 'Backtest Return', '5D Return', 'Diff vs 5D', 'Min Intraday']].copy()
                     stopped_display['Earnings Date'] = pd.to_datetime(stopped_display['Earnings Date']).dt.strftime('%Y-%m-%d')
-                    stopped_display['Backtest Return'] = stopped_display['Backtest Return'].apply(lambda x: f"{x*100:+.2f}%")
-                    stopped_display['5D Return'] = stopped_display['5D Return'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "N/A")
-                    stopped_display['Diff vs 5D'] = stopped_display['Diff vs 5D'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "N/A")
-                    stopped_display['Min Intraday'] = stopped_display['Min Intraday'].apply(lambda x: f"{x*100:+.2f}%")
-                    st.dataframe(stopped_display, use_container_width=True, hide_index=True, height=250)
+                    stopped_display['Backtest Return'] = stopped_display['Backtest Return'] * 100
+                    stopped_display['5D Return'] = stopped_display['5D Return'] * 100
+                    stopped_display['Diff vs 5D'] = stopped_display['Diff vs 5D'] * 100
+                    stopped_display['Min Intraday'] = stopped_display['Min Intraday'] * 100
+                    
+                    st.dataframe(
+                        stopped_display, 
+                        use_container_width=True, 
+                        hide_index=True, 
+                        height=250,
+                        column_config={
+                            "Backtest Return": st.column_config.NumberColumn("Backtest Return", format="%+.2f%%"),
+                            "5D Return": st.column_config.NumberColumn("5D Return", format="%+.2f%%"),
+                            "Diff vs 5D": st.column_config.NumberColumn("Diff vs 5D", format="%+.2f%%"),
+                            "Min Intraday": st.column_config.NumberColumn("Min Intraday", format="%+.2f%%"),
+                        }
+                    )
                 else:
                     st.info("No trades were stopped out with the current stop loss setting.")
             
@@ -1452,19 +1464,33 @@ with tab3:
             
             display_df = results.copy()
             display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
-            display_df['Backtest Return'] = display_df['Backtest Return'].apply(lambda x: f"{x*100:+.2f}%")
-            display_df['5D Return'] = display_df['5D Return'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "N/A")
-            display_df['Diff vs 5D'] = display_df['Diff vs 5D'].apply(lambda x: f"{x*100:+.2f}%" if pd.notna(x) else "N/A")
-            display_df['Max Intraday'] = display_df['Max Intraday'].apply(lambda x: f"{x*100:+.1f}%")
-            display_df['Min Intraday'] = display_df['Min Intraday'].apply(lambda x: f"{x*100:+.1f}%")
-            display_df['Base Price'] = display_df['Base Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+            
+            # Keep numeric columns as numbers for sorting, use column_config for formatting
+            display_df['Backtest Return'] = display_df['Backtest Return'] * 100
+            display_df['5D Return'] = display_df['5D Return'] * 100
+            display_df['Diff vs 5D'] = display_df['Diff vs 5D'] * 100
+            display_df['Max Intraday'] = display_df['Max Intraday'] * 100
+            display_df['Min Intraday'] = display_df['Min Intraday'] * 100
             
             col_order = ['Ticker', 'Company', 'Fiscal Quarter', 'Earnings Date', 'Base Price', 
                         'Exit Day', 'Exit Hour', 'Exit Reason', 'Backtest Return', '5D Return', 
                         'Diff vs 5D', 'Max Intraday', 'Min Intraday']
             col_order = [c for c in col_order if c in display_df.columns]
             
-            st.dataframe(display_df[col_order], use_container_width=True, hide_index=True, height=400)
+            st.dataframe(
+                display_df[col_order], 
+                use_container_width=True, 
+                hide_index=True, 
+                height=400,
+                column_config={
+                    "Base Price": st.column_config.NumberColumn("Base Price", format="$%.2f"),
+                    "Backtest Return": st.column_config.NumberColumn("Backtest Return", format="%+.2f%%"),
+                    "5D Return": st.column_config.NumberColumn("5D Return", format="%+.2f%%"),
+                    "Diff vs 5D": st.column_config.NumberColumn("Diff vs 5D", format="%+.2f%%"),
+                    "Max Intraday": st.column_config.NumberColumn("Max Intraday", format="%+.1f%%"),
+                    "Min Intraday": st.column_config.NumberColumn("Min Intraday", format="%+.1f%%"),
+                }
+            )
             
             # Download button
             csv = results.to_csv(index=False)
