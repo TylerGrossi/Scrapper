@@ -412,7 +412,14 @@ def calc_period_stats(df, col):
 def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
     """
     Backtest strategy using hourly data. If stop_loss is None, no stop loss is applied.
-    Uses the end of day close on max_days for exit.
+    
+    IMPORTANT: If the stock gaps down and opens below the stop loss, you take the 
+    actual opening return (the gap loss), not the stop loss price. This reflects
+    real trading where you can't exit at a price that was never traded.
+    
+    Model Rules:
+    - BMO: Buy at previous day's close, track from market open on earnings day
+    - AMC: Buy at earnings day close, track from next day's market open
     """
     results = []
     
@@ -424,11 +431,11 @@ def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
         earnings_date = trade['Earnings Date']
         fiscal_quarter = trade['Fiscal Quarter']
         
-        # Get all hourly data for this trade
+        # Get all hourly data for this trade (Trading Day >= 1 means after base price)
         trade_data = hourly_df[
             (hourly_df['Ticker'] == ticker) & 
             (hourly_df['Earnings Date'] == earnings_date) &
-            (hourly_df['Trading Day'] >= 1)  # Only data after base price
+            (hourly_df['Trading Day'] >= 1)
         ].sort_values('Datetime')
         
         if trade_data.empty:
@@ -462,8 +469,10 @@ def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
         max_return = 0
         min_return = 0
         stopped_out = False
+        gap_down = False
         
         # Check each hour for stop loss
+        first_candle = True
         for _, hour_data in trade_data.iterrows():
             trading_day = int(hour_data['Trading Day'])
             hour_return = hour_data['Return From Earnings (%)']
@@ -479,12 +488,23 @@ def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
             min_return = min(min_return, hour_return_decimal)
             
             # Check stop loss (only if stop_loss is provided)
-            if stop_loss is not None and hour_return_decimal <= stop_loss:
+            if stop_loss is not None and hour_return_decimal <= stop_loss and not stopped_out:
                 exit_day = trading_day
-                exit_reason = 'Stop Loss'
-                exit_return = stop_loss
+                
+                # CRITICAL: If the FIRST candle opens below stop loss (gap down),
+                # take the actual gap loss, not the stop loss price
+                if first_candle and hour_return_decimal < stop_loss:
+                    exit_return = hour_return_decimal  # Take the actual gap loss
+                    exit_reason = 'Gap Down'
+                    gap_down = True
+                else:
+                    exit_return = stop_loss  # Normal stop loss hit
+                    exit_reason = 'Stop Loss'
+                
                 stopped_out = True
                 break
+            
+            first_candle = False
         
         # If not stopped out, exit at the target day close
         if not stopped_out:
@@ -503,6 +523,7 @@ def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
             'Return': exit_return,
             'Max Return': max_return,
             'Min Return': min_return,
+            'Gap Down': gap_down,
         })
     
     return pd.DataFrame(results)
@@ -521,9 +542,10 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
             continue
         
         # Check stop loss (only if provided)
+        # Note: Legacy method can't detect gap downs accurately
         if stop_loss is not None and pd.notna(low) and low <= stop_loss:
-            final_return = stop_loss
-            exit_reason = 'Stop Loss'
+            final_return = low if low < stop_loss else stop_loss  # Take actual low if gap down
+            exit_reason = 'Gap Down' if low < stop_loss else 'Stop Loss'
         else:
             final_return = exit_return
             exit_reason = f'Day {max_days} Exit'
@@ -537,6 +559,7 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
             'Return': final_return,
             'Max Return': high if pd.notna(high) else 0,
             'Min Return': low if pd.notna(low) else 0,
+            'Gap Down': low < stop_loss if stop_loss and pd.notna(low) else False,
         })
     
     return pd.DataFrame(results)
@@ -952,6 +975,12 @@ with tab3:
             with st.spinner("Running backtest on hourly data..."):
                 # Detailed backtest function that captures hourly stop times
                 def detailed_hourly_backtest(hourly_df, returns_df, stop_loss=None, max_days=5):
+                    """
+                    Detailed backtest with gap down handling.
+                    
+                    IMPORTANT: If stock gaps down and opens below stop loss on first candle,
+                    take the actual gap loss, not the stop loss price.
+                    """
                     results = []
                     
                     # Get all unique trades
@@ -1009,6 +1038,8 @@ with tab3:
                         max_return = 0
                         min_return = 0
                         stopped_out = False
+                        gap_down = False
+                        first_candle = True
                         
                         for _, hour_data in trade_data.iterrows():
                             trading_day = int(hour_data['Trading Day'])
@@ -1029,10 +1060,21 @@ with tab3:
                                 exit_trading_day = trading_day
                                 exit_hour = hour_data.get('Time', hour_data.get('Hour', ''))
                                 exit_datetime = hour_data.get('Datetime', None)
-                                exit_reason = 'Stop Loss'
-                                exit_return = stop_loss
+                                
+                                # CRITICAL: If FIRST candle opens below stop (gap down),
+                                # take actual gap loss, not stop loss price
+                                if first_candle and hour_return_decimal < stop_loss:
+                                    exit_return = hour_return_decimal
+                                    exit_reason = 'Gap Down'
+                                    gap_down = True
+                                else:
+                                    exit_return = stop_loss
+                                    exit_reason = 'Stop Loss'
+                                
                                 stopped_out = True
                                 break
+                            
+                            first_candle = False
                         
                         # If not stopped, exit at day close
                         if not stopped_out:
@@ -1064,6 +1106,7 @@ with tab3:
                             'Max Intraday': max_return,
                             'Min Intraday': min_return,
                             'Stopped Out': stopped_out,
+                            'Gap Down': gap_down,
                         })
                     
                     return pd.DataFrame(results)
@@ -1176,30 +1219,41 @@ with tab3:
             # Exit Breakdown
             st.markdown("### 🚪 Exit Breakdown")
             
-            col1, col2 = st.columns(2)
+            # Count different exit types
+            gap_down_count = results['Gap Down'].sum() if 'Gap Down' in results.columns else 0
+            stop_loss_count = stopped_count - gap_down_count
+            
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                stopped_trades = results[results['Stopped Out'] == True]
-                stopped_avg = stopped_trades['Backtest Return'].mean() * 100 if len(stopped_trades) > 0 else 0
+                # Gap downs (opened below stop)
+                gap_trades = results[results['Gap Down'] == True] if 'Gap Down' in results.columns else pd.DataFrame()
+                gap_avg = gap_trades['Backtest Return'].mean() * 100 if len(gap_trades) > 0 else 0
                 
                 st.markdown(f"""
                 <div class="exit-card">
-                    <div class="exit-count">{stopped_count}</div>
-                    <div class="exit-pct">({stopped_count/n_trades*100:.1f}% of trades)</div>
-                    <div class="exit-return" style="color: #ef4444;">{stopped_avg:+.2f}% avg</div>
-                    <div class="exit-label">🛑 Stopped Out</div>
+                    <div class="exit-count">{gap_down_count}</div>
+                    <div class="exit-pct">({gap_down_count/n_trades*100:.1f}% of trades)</div>
+                    <div class="exit-return" style="color: #ef4444;">{gap_avg:+.2f}% avg</div>
+                    <div class="exit-label">📉 Gap Down (opened below stop)</div>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                if len(stopped_trades) > 0:
-                    # Show when stops were hit
-                    st.markdown("**When stops were hit:**")
-                    stop_day_dist = stopped_trades['Exit Day'].value_counts().sort_index()
-                    for day, count in stop_day_dist.items():
-                        pct = count / len(stopped_trades) * 100
-                        st.markdown(f"- Day {day}: {count} trades ({pct:.0f}%)")
             
             with col2:
+                # Normal stop losses
+                stop_trades = results[(results['Stopped Out'] == True) & (results.get('Gap Down', False) == False)]
+                stop_avg = stop_trades['Backtest Return'].mean() * 100 if len(stop_trades) > 0 else 0
+                
+                st.markdown(f"""
+                <div class="exit-card">
+                    <div class="exit-count">{stop_loss_count}</div>
+                    <div class="exit-pct">({stop_loss_count/n_trades*100:.1f}% of trades)</div>
+                    <div class="exit-return" style="color: #f59e0b;">{stop_avg:+.2f}% avg</div>
+                    <div class="exit-label">🛑 Stop Loss Hit</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
                 held_trades = results[results['Stopped Out'] == False]
                 held_avg = held_trades['Backtest Return'].mean() * 100 if len(held_trades) > 0 else 0
                 
@@ -1211,9 +1265,28 @@ with tab3:
                     <div class="exit-label">✅ Held to Day {max_days}</div>
                 </div>
                 """, unsafe_allow_html=True)
-                
+            
+            st.markdown("")
+            
+            # Additional details
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if stopped_count > 0:
+                    stopped_trades = results[results['Stopped Out'] == True]
+                    st.markdown("**When stops/gaps occurred:**")
+                    stop_day_dist = stopped_trades['Exit Day'].value_counts().sort_index()
+                    for day, count in stop_day_dist.items():
+                        pct = count / len(stopped_trades) * 100
+                        st.markdown(f"- Day {day}: {count} trades ({pct:.0f}%)")
+                    
+                    if gap_down_count > 0:
+                        st.markdown(f"\n**Gap downs:** {gap_down_count} trades gapped below {stop_loss*100:.0f}% stop")
+                        worst_gap = gap_trades['Backtest Return'].min() * 100
+                        st.markdown(f"- Worst gap: {worst_gap:+.1f}%")
+            
+            with col2:
                 if len(held_trades) > 0:
-                    # Show distribution of held returns
                     st.markdown("**Held trade performance:**")
                     winners = len(held_trades[held_trades['Backtest Return'] > 0])
                     losers = len(held_trades[held_trades['Backtest Return'] <= 0])
@@ -1433,11 +1506,22 @@ with tab3:
                             continue
                         
                         exit_return = None
+                        stopped = False
+                        gap_down = False
+                        first_candle = True
+                        
                         for _, hour in trade_data.iterrows():
                             ret = hour['Return From Earnings (%)'] / 100
                             if stop is not None and ret <= stop:
-                                exit_return = stop
+                                # Gap down: first candle opens below stop
+                                if first_candle and ret < stop:
+                                    exit_return = ret  # Take actual gap loss
+                                    gap_down = True
+                                else:
+                                    exit_return = stop
+                                stopped = True
                                 break
+                            first_candle = False
                         
                         if exit_return is None:
                             last_day = trade_data[trade_data['Trading Day'] == trade_data['Trading Day'].max()]
@@ -1445,7 +1529,11 @@ with tab3:
                                 exit_return = last_day['Return From Earnings (%)'].iloc[-1] / 100
                         
                         if exit_return is not None:
-                            res_list.append({'Return': exit_return, 'Stopped': exit_return == stop})
+                            res_list.append({
+                                'Return': exit_return, 
+                                'Stopped': stopped,
+                                'Gap Down': gap_down
+                            })
                     
                     if res_list:
                         res_df = pd.DataFrame(res_list)
@@ -1456,6 +1544,7 @@ with tab3:
                             'Avg Return': res_df['Return'].mean() * 100,
                             'Win Rate': (res_df['Return'] > 0).mean() * 100,
                             'Stopped %': res_df['Stopped'].mean() * 100 if stop else 0,
+                            'Gap Downs': res_df['Gap Down'].sum() if stop else 0,
                             'Trades': len(res_df)
                         })
                     
