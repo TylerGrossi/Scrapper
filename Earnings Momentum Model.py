@@ -392,19 +392,32 @@ def backfill(df):
             df[col] = np.nan if col in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)"] else ""
     
     def needs_bf(row):
+        # Check if Fiscal Quarter needs backfill
         fq = row.get("Fiscal Quarter")
-        if pd.isna(fq) or fq == "" or (isinstance(fq, str) and ("FY" in fq or len(fq) <= 3)):
-            return True
+        fq_needs_update = False
+        if pd.isna(fq) or fq == "":
+            fq_needs_update = True
+        elif isinstance(fq, str):
+            # Valid format is like "Q3 FY25" - must contain both Q and FY
+            if not ("Q" in fq and "FY" in fq):
+                fq_needs_update = True
+        
+        # Check if EPS data needs backfill (only for past earnings)
+        eps_needs_update = False
         if pd.isna(row.get("EPS Estimate")) and pd.isna(row.get("Reported EPS")):
             ed = safe_dt(row.get("Earnings Date"))
             if pd.notna(ed) and ed.date() < datetime.today().date():
-                return True
-        if pd.isna(row.get("Earnings Date (yfinance)")):
-            return True
-        # Also backfill if Date Check is empty but we have both dates
+                eps_needs_update = True
+        
+        # Check if yfinance date needs backfill
+        yf_date_needs_update = pd.isna(row.get("Earnings Date (yfinance)"))
+        
+        # Check if Date Check needs update
+        date_check_needs_update = False
         if (pd.isna(row.get("Date Check")) or row.get("Date Check") == "") and pd.notna(row.get("Earnings Date (yfinance)")):
-            return True
-        return False
+            date_check_needs_update = True
+        
+        return fq_needs_update or eps_needs_update or yf_date_needs_update or date_check_needs_update
     
     need = df[df.apply(needs_bf, axis=1)]
     if need.empty:
@@ -416,18 +429,25 @@ def backfill(df):
     for idx, row in need.iterrows():
         t = row["Ticker"]
         ed = safe_dt(row.get("Earnings Date"))
+        fq = row.get("Fiscal Quarter")
         
         try:
             if pd.notna(ed):
-                df.at[idx, "Fiscal Quarter"] = get_fiscal_quarter(t, ed)
+                # Only update Fiscal Quarter if it's missing or invalid
+                if pd.isna(fq) or fq == "" or not (isinstance(fq, str) and "Q" in fq and "FY" in fq):
+                    new_fq = get_fiscal_quarter(t, ed)
+                    if new_fq:
+                        df.at[idx, "Fiscal Quarter"] = new_fq
+                        print(f"  {t} → {new_fq}")
                 
+                # Only update yfinance date if missing
                 if pd.isna(row.get("Earnings Date (yfinance)")):
                     yf_date, _ = get_yfinance_earnings_date(t)
                     if yf_date:
                         df.at[idx, "Earnings Date (yfinance)"] = pd.Timestamp(yf_date)
                         date_check = check_date_status(ed, yf_date)
                         df.at[idx, "Date Check"] = date_check
-                        print(f"    Date Check: {date_check}")
+                        print(f"    {t}: yfinance date added, Date Check: {date_check}")
                 else:
                     # Recalculate Date Check if yfinance date exists but Date Check is empty
                     yf_existing = df.at[idx, "Earnings Date (yfinance)"]
@@ -435,26 +455,27 @@ def backfill(df):
                         date_check = check_date_status(ed, yf_existing)
                         df.at[idx, "Date Check"] = date_check
                 
+                # Only update EPS if missing and earnings have passed
                 if ed.date() < datetime.today().date():
-                    eps = get_eps_from_yfinance(t, ed)
-                    if eps["EPS Estimate"] is not None:
-                        df.at[idx, "EPS Estimate"] = eps["EPS Estimate"]
-                    if eps["Reported EPS"] is not None:
-                        df.at[idx, "Reported EPS"] = eps["Reported EPS"]
-                    if eps["EPS Surprise (%)"] is not None:
-                        df.at[idx, "EPS Surprise (%)"] = eps["EPS Surprise (%)"]
-                    if eps["Earnings Timing"]:
-                        df.at[idx, "Earnings Timing"] = eps["Earnings Timing"]
-                    
-                    if pd.isna(df.at[idx, "EPS Estimate"]) and pd.isna(df.at[idx, "Reported EPS"]):
-                        cal = scrape_yahoo_calendar(ed)
-                        if t.upper() in cal:
-                            d = cal[t.upper()]
-                            for k in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)", "Earnings Timing"]:
-                                if d.get(k) is not None:
-                                    df.at[idx, k] = d[k]
+                    if pd.isna(row.get("EPS Estimate")) and pd.isna(row.get("Reported EPS")):
+                        eps = get_eps_from_yfinance(t, ed)
+                        if eps["EPS Estimate"] is not None:
+                            df.at[idx, "EPS Estimate"] = eps["EPS Estimate"]
+                        if eps["Reported EPS"] is not None:
+                            df.at[idx, "Reported EPS"] = eps["Reported EPS"]
+                        if eps["EPS Surprise (%)"] is not None:
+                            df.at[idx, "EPS Surprise (%)"] = eps["EPS Surprise (%)"]
+                        if eps["Earnings Timing"]:
+                            df.at[idx, "Earnings Timing"] = eps["Earnings Timing"]
+                        
+                        if pd.isna(df.at[idx, "EPS Estimate"]) and pd.isna(df.at[idx, "Reported EPS"]):
+                            cal = scrape_yahoo_calendar(ed)
+                            if t.upper() in cal:
+                                d = cal[t.upper()]
+                                for k in ["EPS Estimate", "Reported EPS", "EPS Surprise (%)", "Earnings Timing"]:
+                                    if d.get(k) is not None:
+                                        df.at[idx, k] = d[k]
                 
-                print(f"  {t} → {df.at[idx, 'Fiscal Quarter']} | {df.at[idx, 'Date Check']}")
                 time.sleep(0.3)
         except Exception as e:
             print(f"  {t} error: {e}")
@@ -606,8 +627,9 @@ def export_hourly_prices(udf, days_after=5):
         
         try:
             # Calculate date range for this ticker
-            # Start from day before earnings to capture pre-market
-            start_date = earnings_date - timedelta(days=1)
+            # Start from 7 days before earnings to ensure we capture previous trading day for BMO
+            # (handles weekends + holidays)
+            start_date = earnings_date - timedelta(days=7)
             # End date: add extra days to account for weekends/holidays
             end_date = earnings_date + timedelta(days=days_after + 5)
             
@@ -640,42 +662,62 @@ def export_hourly_prices(udf, days_after=5):
             # yfinance returns timezone-aware timestamps (America/New_York)
             prices.index = prices.index.tz_localize(None)
             
-            # Determine the base price and reference time
-            # For BMO: use previous day's close
-            # For AMC: use that day's close (end of regular hours)
+            # Determine the base price (entry price) and when to start tracking
+            # BMO: Buy at previous day's close (~4pm day before), track from market open on earnings day
+            # AMC: Buy at earnings day close (~4pm), track from next day's market open
             earnings_dt = pd.Timestamp(earnings_date).tz_localize(None)
+            earnings_day = earnings_dt.date()
             
             if timing == "BMO":
-                # Base price = last price before market open on earnings day
-                # Find prices from the day before
-                base_cutoff = earnings_dt.replace(hour=0, minute=0, second=0)
-                base_prices = prices[prices.index < base_cutoff]
-                if not base_prices.empty:
-                    base_price = base_prices.iloc[-1]
-                    base_time = base_prices.index[-1]
-                else:
-                    print(f"      No base price found for BMO")
+                # Base price = previous trading day's close (last price before earnings day)
+                base_prices = prices[prices.index.date < earnings_day]
+                
+                if base_prices.empty:
+                    print(f"      No base price found for BMO (no data before earnings day)")
                     continue
+                
+                base_price = base_prices.iloc[-1]
+                base_time = base_prices.index[-1]
+                
+                # Start tracking from market open on earnings day (first price on earnings day)
+                track_start = prices[prices.index.date >= earnings_day]
+                if track_start.empty:
+                    print(f"      No tracking data for BMO")
+                    continue
+                track_start_time = track_start.index[0]
+                
             else:  # AMC or unknown
-                # Base price = close on earnings day (around 4pm)
-                base_cutoff = earnings_dt.replace(hour=16, minute=0, second=0)
-                base_prices = prices[prices.index <= base_cutoff]
-                if not base_prices.empty:
-                    base_price = base_prices.iloc[-1]
-                    base_time = base_prices.index[-1]
-                else:
-                    print(f"      No base price found for AMC")
+                # Base price = earnings day close (~4pm on earnings day)
+                day_prices = prices[prices.index.date == earnings_day]
+                
+                if day_prices.empty:
+                    print(f"      No base price found for AMC (no data on earnings day)")
                     continue
+                
+                # Get the last price on earnings day (should be around 4pm close)
+                base_price = day_prices.iloc[-1]
+                base_time = day_prices.index[-1]
+                
+                # Start tracking from next trading day
+                track_start = prices[prices.index.date > earnings_day]
+                if track_start.empty:
+                    print(f"      No tracking data for AMC (no data after earnings day)")
+                    continue
+                track_start_time = track_start.index[0]
             
             print(f"      Base: ${base_price:.2f} at {base_time}")
+            print(f"      Tracking from: {track_start_time}")
             
-            # Count trading days after earnings
-            # To match 5D return: we need data through the END of trading day 5
-            # Trading day 1 = first full day after base price
-            # Trading day 5 = fifth day after base price (where 5D return is calculated)
+            # Count trading days after the tracking start
+            # Trading day 1 = first full trading day we're tracking
+            # Trading day 5 = fifth trading day (where 5D return is calculated)
             trading_days_count = 0
             last_trading_date = None
-            base_date = base_time.date() if hasattr(base_time, 'date') else pd.to_datetime(base_time).date()
+            
+            # Convert track_start_time to comparable format
+            track_start_cmp = track_start_time.to_pydatetime() if hasattr(track_start_time, 'to_pydatetime') else track_start_time
+            if hasattr(track_start_cmp, 'tzinfo') and track_start_cmp.tzinfo is not None:
+                track_start_cmp = track_start_cmp.replace(tzinfo=None)
             
             for dt_idx, close_price in prices.items():
                 # Convert to datetime if needed
@@ -688,19 +730,14 @@ def export_hourly_prices(udf, days_after=5):
                 if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
                     dt = dt.replace(tzinfo=None)
                 
-                # Convert base_time to comparable format
-                base_time_cmp = base_time.to_pydatetime() if hasattr(base_time, 'to_pydatetime') else base_time
-                if hasattr(base_time_cmp, 'tzinfo') and base_time_cmp.tzinfo is not None:
-                    base_time_cmp = base_time_cmp.replace(tzinfo=None)
-                
-                # Skip if before or equal to base time
-                if dt <= base_time_cmp:
+                # Skip if before tracking start time
+                if dt < track_start_cmp:
                     continue
                 
-                # Track trading days - count days AFTER base date
+                # Track trading days
                 current_date = dt.date()
                 if last_trading_date is None:
-                    # First data point after base
+                    # First data point
                     trading_days_count = 1
                     last_trading_date = current_date
                 elif current_date > last_trading_date:
@@ -713,10 +750,13 @@ def export_hourly_prices(udf, days_after=5):
                 if trading_days_count > days_after:
                     break
                 
-                # Calculate hours from base time
+                # Calculate hours from base time (entry point)
+                base_time_cmp = base_time.to_pydatetime() if hasattr(base_time, 'to_pydatetime') else base_time
+                if hasattr(base_time_cmp, 'tzinfo') and base_time_cmp.tzinfo is not None:
+                    base_time_cmp = base_time_cmp.replace(tzinfo=None)
                 hours_from_earnings = (dt - base_time_cmp).total_seconds() / 3600
                 
-                # Calculate return from earnings base price
+                # Calculate return from base price (entry price)
                 return_from_earnings = ((close_price / base_price) - 1) * 100
                 
                 rows.append({
