@@ -571,7 +571,7 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
 
 st.title("Earnings Momentum Strategy")
 
-tab1, tab2, tab3 = st.tabs(["Stock Screener", "Backtest", "PowerBI"])
+tab1, tab2, tab3 = st.tabs(["Stock Screener", "Stop Loss Analysis", "PowerBI"])
 
 # =============================================================================
 # TAB 1: STOCK SCREENER
@@ -644,7 +644,7 @@ with tab1:
         st.caption("Click Find Stocks to scan.")
 
 # =============================================================================
-# TAB 2: BACKTEST
+# TAB 2: STOP LOSS ANALYSIS
 # =============================================================================
 with tab2:
     hourly_df = load_hourly_prices()
@@ -660,7 +660,7 @@ with tab2:
     has_hourly = hourly_df is not None and not hourly_df.empty
     has_returns = returns_df is not None and not returns_df.empty
     
-    st.subheader("Strategy Backtest")
+    st.subheader("Stop Loss Analysis")
     
     if not has_hourly and not has_returns:
         st.warning("No data available. Upload hourly_prices.csv or returns_tracker.csv.")
