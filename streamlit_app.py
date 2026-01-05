@@ -8,7 +8,6 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy import stats
 
 # --- Page Config ---
 st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="📈", layout="wide")
@@ -48,6 +47,44 @@ st.markdown("""
     /* Remove excessive padding */
     .stTabs [data-baseweb="tab-panel"] { padding-top: 1rem; }
     
+    /* Rule cards */
+    .rule-card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .rule-number {
+        display: inline-block;
+        background: #475569;
+        color: #f1f5f9;
+        font-weight: 600;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        margin-bottom: 0.5rem;
+    }
+    .rule-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 0.25rem;
+    }
+    .rule-desc {
+        font-size: 0.85rem;
+        color: #94a3b8;
+    }
+    
+    /* Strategy highlight */
+    .strategy-banner {
+        background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+    
     /* Metric cards for backtest */
     .metric-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -72,6 +109,40 @@ st.markdown("""
     .metric-blue { color: #3b82f6; }
     .metric-yellow { color: #f59e0b; }
     .metric-white { color: #f1f5f9; }
+    
+    /* Parameter panel */
+    .param-panel {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .param-title {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Section headers */
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 2rem 0 1rem 0;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #334155;
+    }
+    .section-icon {
+        font-size: 1.5rem;
+    }
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #f1f5f9;
+    }
     
     /* Exit breakdown cards */
     .exit-card {
@@ -101,27 +172,9 @@ st.markdown("""
         margin-top: 0.25rem;
     }
     
-    /* Surprise analysis cards */
-    .surprise-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 1.25rem;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .surprise-value {
-        font-size: 1.8rem;
-        font-weight: 700;
-    }
-    .surprise-label {
-        font-size: 0.8rem;
-        color: #94a3b8;
-        margin-top: 0.25rem;
-    }
-    .surprise-sub {
-        font-size: 0.75rem;
-        color: #64748b;
+    /* Comparison table styling */
+    .best-row {
+        background: rgba(34, 197, 94, 0.1) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -284,6 +337,7 @@ def load_returns_data():
 
 @st.cache_data(ttl=3600)
 def load_earnings_universe():
+    """Load earnings universe to get Date Check info."""
     urls = [
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/earnings_universe.csv",
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/earnings_universe.csv",
@@ -303,6 +357,7 @@ def load_earnings_universe():
 
 @st.cache_data(ttl=3600)
 def load_hourly_prices():
+    """Load hourly prices data."""
     urls = [
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/hourly_prices.csv",
         "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/hourly_prices.csv",
@@ -326,40 +381,188 @@ def load_hourly_prices():
     except:
         return None
 
+def filter_date_passed(hourly_df, earnings_df):
+    """Filter out tickers with DATE PASSED from hourly prices."""
+    if earnings_df is None or 'Date Check' not in earnings_df.columns:
+        return hourly_df
+    
+    date_passed_tickers = earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist()
+    if date_passed_tickers:
+        filtered_df = hourly_df[~hourly_df['Ticker'].isin(date_passed_tickers)]
+        return filtered_df
+    return hourly_df
 
-# =============================================================================
-# EARNINGS SURPRISE ANALYSIS FUNCTIONS
-# =============================================================================
-
-def categorize_surprise(surprise_pct):
-    """Categorize EPS surprise into buckets."""
-    if pd.isna(surprise_pct):
-        return 'N/A'
-    elif surprise_pct <= -20:
-        return 'Big Miss (≤-20%)'
-    elif surprise_pct <= -5:
-        return 'Miss (-20% to -5%)'
-    elif surprise_pct < 5:
-        return 'In-Line (-5% to 5%)'
-    elif surprise_pct < 20:
-        return 'Beat (5% to 20%)'
-    elif surprise_pct < 50:
-        return 'Strong Beat (20% to 50%)'
-    else:
-        return 'Blowout (≥50%)'
-
-def get_surprise_color(category):
-    """Get color for surprise category."""
-    colors = {
-        'Big Miss (≤-20%)': '#ef4444',
-        'Miss (-20% to -5%)': '#f97316',
-        'In-Line (-5% to 5%)': '#94a3b8',
-        'Beat (5% to 20%)': '#22c55e',
-        'Strong Beat (20% to 50%)': '#10b981',
-        'Blowout (≥50%)': '#06b6d4',
-        'N/A': '#64748b'
+def calc_period_stats(df, col):
+    valid = df[col].dropna()
+    if len(valid) == 0:
+        return {'mean': 0, 'median': 0, 'win_rate': 0, 'sharpe': 0, 'n': 0}
+    return {
+        'mean': valid.mean(),
+        'median': valid.median(),
+        'win_rate': (valid > 0).sum() / len(valid),
+        'sharpe': valid.mean() / valid.std() if valid.std() > 0 else 0,
+        'n': len(valid)
     }
-    return colors.get(category, '#64748b')
+
+
+# =============================================================================
+# BACKTEST FUNCTIONS
+# =============================================================================
+
+def backtest_with_hourly_prices(hourly_df, stop_loss=None, max_days=5):
+    """
+    Backtest strategy using hourly data. If stop_loss is None, no stop loss is applied.
+    
+    IMPORTANT: If the stock gaps down and opens below the stop loss, you take the 
+    actual opening return (the gap loss), not the stop loss price. This reflects
+    real trading where you can't exit at a price that was never traded.
+    
+    Model Rules:
+    - BMO: Buy at previous day's close, track from market open on earnings day
+    - AMC: Buy at earnings day close, track from next day's market open
+    """
+    results = []
+    
+    # Group by trade (Ticker + Earnings Date + Fiscal Quarter)
+    trades = hourly_df.groupby(['Ticker', 'Earnings Date', 'Fiscal Quarter']).size().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter']]
+    
+    for _, trade in trades.iterrows():
+        ticker = trade['Ticker']
+        earnings_date = trade['Earnings Date']
+        fiscal_quarter = trade['Fiscal Quarter']
+        
+        # Get all hourly data for this trade (Trading Day >= 1 means after base price)
+        trade_data = hourly_df[
+            (hourly_df['Ticker'] == ticker) & 
+            (hourly_df['Earnings Date'] == earnings_date) &
+            (hourly_df['Trading Day'] >= 1)
+        ].sort_values('Datetime')
+        
+        if trade_data.empty:
+            continue
+        
+        # Get the last hour of max_days (end of day close)
+        exit_day_data = trade_data[trade_data['Trading Day'] == max_days]
+        if exit_day_data.empty:
+            # Try adjacent days if exact day not available
+            for target_day in [max_days - 1, max_days + 1]:
+                exit_day_data = trade_data[trade_data['Trading Day'] == target_day]
+                if not exit_day_data.empty:
+                    break
+        
+        if exit_day_data.empty:
+            continue
+        
+        # Get the last hour's return (end of day)
+        exit_day_return = exit_day_data['Return From Earnings (%)'].iloc[-1]
+        actual_exit_day = int(exit_day_data['Trading Day'].iloc[-1])
+        
+        if pd.isna(exit_day_return):
+            continue
+        
+        company_name = trade_data['Company Name'].iloc[0] if 'Company Name' in trade_data.columns else ticker
+        base_price = trade_data['Base Price'].iloc[0] if 'Base Price' in trade_data.columns else None
+        
+        exit_day = None
+        exit_reason = None
+        exit_return = None
+        max_return = 0
+        min_return = 0
+        stopped_out = False
+        gap_down = False
+        
+        # Check each hour for stop loss
+        first_candle = True
+        for _, hour_data in trade_data.iterrows():
+            trading_day = int(hour_data['Trading Day'])
+            hour_return = hour_data['Return From Earnings (%)']
+            
+            if trading_day > actual_exit_day:
+                break
+            
+            if pd.isna(hour_return):
+                continue
+            
+            hour_return_decimal = hour_return / 100
+            max_return = max(max_return, hour_return_decimal)
+            min_return = min(min_return, hour_return_decimal)
+            
+            # Check stop loss (only if stop_loss is provided)
+            if stop_loss is not None and hour_return_decimal <= stop_loss and not stopped_out:
+                exit_day = trading_day
+                
+                # CRITICAL: If the FIRST candle opens below stop loss (gap down),
+                # take the actual gap loss, not the stop loss price
+                if first_candle and hour_return_decimal < stop_loss:
+                    exit_return = hour_return_decimal  # Take the actual gap loss
+                    exit_reason = 'Gap Down'
+                    gap_down = True
+                else:
+                    exit_return = stop_loss  # Normal stop loss hit
+                    exit_reason = 'Stop Loss'
+                
+                stopped_out = True
+                break
+            
+            first_candle = False
+        
+        # If not stopped out, exit at the target day close
+        if not stopped_out:
+            exit_day = actual_exit_day
+            exit_reason = f'Day {actual_exit_day} Exit'
+            exit_return = exit_day_return / 100
+        
+        results.append({
+            'Ticker': ticker,
+            'Company': company_name,
+            'Earnings Date': earnings_date,
+            'Fiscal Quarter': fiscal_quarter,
+            'Base Price': base_price,
+            'Exit Day': exit_day,
+            'Exit Reason': exit_reason,
+            'Return': exit_return,
+            'Max Return': max_return,
+            'Min Return': min_return,
+            'Gap Down': gap_down,
+        })
+    
+    return pd.DataFrame(results)
+
+def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
+    """Legacy backtest using returns_tracker.csv (less accurate)."""
+    results = []
+    day_col = '5D Return' if max_days == 5 else '7D Return' if max_days == 7 else '10D Return'
+    
+    for idx, row in df.iterrows():
+        high = row.get('1W High Return', np.nan)
+        low = row.get('1W Low Return', np.nan)
+        exit_return = row.get(day_col, np.nan)
+        
+        if pd.isna(exit_return):
+            continue
+        
+        # Check stop loss (only if provided)
+        # Note: Legacy method can't detect gap downs accurately
+        if stop_loss is not None and pd.notna(low) and low <= stop_loss:
+            final_return = low if low < stop_loss else stop_loss  # Take actual low if gap down
+            exit_reason = 'Gap Down' if low < stop_loss else 'Stop Loss'
+        else:
+            final_return = exit_return
+            exit_reason = f'Day {max_days} Exit'
+        
+        results.append({
+            'Ticker': row.get('Ticker', ''),
+            'Company': row.get('Company Name', row.get('Ticker', '')),
+            'Earnings Date': row.get('Earnings Date', ''),
+            'Exit Day': max_days,
+            'Exit Reason': exit_reason,
+            'Return': final_return,
+            'Max Return': high if pd.notna(high) else 0,
+            'Min Return': low if pd.notna(low) else 0,
+            'Gap Down': low < stop_loss if stop_loss and pd.notna(low) else False,
+        })
+    
+    return pd.DataFrame(results)
 
 
 # =============================================================================
@@ -368,7 +571,7 @@ def get_surprise_color(category):
 
 st.title("Earnings Momentum Strategy")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "Stop Loss Analysis", "Earnings Surprise Analysis", "PowerBI"])
+tab1, tab2, tab3 = st.tabs(["Stock Screener", "Stop Loss Analysis", "PowerBI"])
 
 # =============================================================================
 # TAB 1: STOCK SCREENER
@@ -461,6 +664,21 @@ with tab2:
     
     if not has_hourly and not has_returns:
         st.warning("No data available. Upload hourly_prices.csv or returns_tracker.csv.")
+        col1, col2 = st.columns(2)
+        with col1:
+            hourly_upload = st.file_uploader("Upload hourly_prices.csv:", type=['csv'], key='hourly')
+            if hourly_upload:
+                hourly_df = pd.read_csv(hourly_upload)
+                hourly_df['Datetime'] = pd.to_datetime(hourly_df['Datetime'], errors='coerce')
+                hourly_df['Date'] = pd.to_datetime(hourly_df['Date'], errors='coerce')
+                hourly_df['Earnings Date'] = pd.to_datetime(hourly_df['Earnings Date'], errors='coerce')
+                has_hourly = True
+        with col2:
+            returns_upload = st.file_uploader("Upload returns_tracker.csv:", type=['csv'], key='returns')
+            if returns_upload:
+                returns_df = pd.read_csv(returns_upload)
+                returns_df['Earnings Date'] = pd.to_datetime(returns_df['Earnings Date'], errors='coerce')
+                has_returns = True
     
     if has_hourly or has_returns:
         # Data summary
@@ -475,6 +693,12 @@ with tab2:
                 st.metric("Unique Tickers", hourly_df['Ticker'].nunique())
             with col3:
                 st.metric("Hourly Data Points", f"{len(hourly_df):,}")
+        
+        # Show filtered info
+        if earnings_df is not None and 'Date Check' in earnings_df.columns:
+            date_passed_count = len(earnings_df[earnings_df['Date Check'] == 'DATE PASSED'])
+            if date_passed_count > 0:
+                st.caption(f"ℹ️ Filtered out {date_passed_count} tickers with incorrect earnings dates (DATE PASSED)")
         
         st.markdown("---")
         
@@ -500,8 +724,17 @@ with tab2:
         if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
             
             with st.spinner("Running backtest on hourly data..."):
+                # Detailed backtest function that captures hourly stop times
                 def detailed_hourly_backtest(hourly_df, returns_df, stop_loss=None, max_days=5):
+                    """
+                    Detailed backtest with gap down handling.
+                    
+                    IMPORTANT: If stock gaps down and opens below stop loss on first candle,
+                    take the actual gap loss, not the stop loss price.
+                    """
                     results = []
+                    
+                    # Get all unique trades
                     trades = hourly_df.groupby(['Ticker', 'Earnings Date']).first().reset_index()[['Ticker', 'Earnings Date', 'Fiscal Quarter', 'Company Name', 'Base Price', 'Earnings Timing']]
                     
                     for _, trade in trades.iterrows():
@@ -512,6 +745,7 @@ with tab2:
                         base_price = trade.get('Base Price', None)
                         earnings_timing = trade.get('Earnings Timing', '')
                         
+                        # Get all hourly data for this trade
                         trade_data = hourly_df[
                             (hourly_df['Ticker'] == ticker) & 
                             (hourly_df['Earnings Date'] == earnings_date) &
@@ -521,6 +755,7 @@ with tab2:
                         if trade_data.empty:
                             continue
                         
+                        # Get 5D return from returns_tracker for comparison
                         return_5d = None
                         if returns_df is not None:
                             match = returns_df[
@@ -530,6 +765,7 @@ with tab2:
                             if not match.empty and '5D Return' in match.columns:
                                 return_5d = match['5D Return'].iloc[0]
                         
+                        # Find exit day data
                         exit_day_data = trade_data[trade_data['Trading Day'] == max_days]
                         if exit_day_data.empty:
                             for target_day in [max_days - 1, max_days + 1, max_days - 2]:
@@ -540,11 +776,14 @@ with tab2:
                         if exit_day_data.empty:
                             continue
                         
+                        # Get end of day return for exit day
                         exit_day_close_return = exit_day_data['Return From Earnings (%)'].iloc[-1] / 100
                         actual_exit_day = int(exit_day_data['Trading Day'].iloc[-1])
                         
+                        # Track through each hour
                         exit_reason = None
                         exit_return = None
+                        exit_datetime = None
                         exit_trading_day = None
                         exit_hour = None
                         max_return = 0
@@ -567,10 +806,14 @@ with tab2:
                             max_return = max(max_return, hour_return_decimal)
                             min_return = min(min_return, hour_return_decimal)
                             
+                            # Check stop loss
                             if stop_loss is not None and hour_return_decimal <= stop_loss and not stopped_out:
                                 exit_trading_day = trading_day
                                 exit_hour = hour_data.get('Time', hour_data.get('Hour', ''))
+                                exit_datetime = hour_data.get('Datetime', None)
                                 
+                                # CRITICAL: If FIRST candle opens below stop (gap down),
+                                # take actual gap loss, not stop loss price
                                 if first_candle and hour_return_decimal < stop_loss:
                                     exit_return = hour_return_decimal
                                     exit_reason = 'Gap Down'
@@ -584,12 +827,15 @@ with tab2:
                             
                             first_candle = False
                         
+                        # If not stopped, exit at day close
                         if not stopped_out:
                             exit_trading_day = actual_exit_day
                             exit_hour = exit_day_data['Time'].iloc[-1] if 'Time' in exit_day_data.columns else ''
+                            exit_datetime = exit_day_data['Datetime'].iloc[-1] if 'Datetime' in exit_day_data.columns else None
                             exit_reason = f'Day {actual_exit_day} Close'
                             exit_return = exit_day_close_return
                         
+                        # Calculate difference vs 5D return
                         diff_vs_5d = None
                         if return_5d is not None and exit_return is not None:
                             diff_vs_5d = exit_return - return_5d
@@ -603,6 +849,7 @@ with tab2:
                             'Base Price': base_price,
                             'Exit Day': exit_trading_day,
                             'Exit Hour': exit_hour,
+                            'Exit Datetime': exit_datetime,
                             'Exit Reason': exit_reason,
                             'Backtest Return': exit_return,
                             '5D Return': return_5d,
@@ -615,11 +862,13 @@ with tab2:
                     
                     return pd.DataFrame(results)
                 
+                # Run the backtest
                 results = detailed_hourly_backtest(hourly_df, returns_df, stop_loss=stop_loss, max_days=max_days)
             
             if results.empty:
                 st.warning("No trades found with complete data.")
             else:
+                # Store results in session state
                 st.session_state['backtest_results'] = results
                 st.session_state['stop_loss'] = stop_loss
                 st.session_state['max_days'] = max_days
@@ -633,6 +882,7 @@ with tab2:
             st.markdown("---")
             st.markdown("### 📈 Backtest Results")
             
+            # Key Metrics
             total_return = results['Backtest Return'].sum() * 100
             avg_return = results['Backtest Return'].mean() * 100
             win_rate = (results['Backtest Return'] > 0).mean() * 100
@@ -640,6 +890,7 @@ with tab2:
             stopped_count = results['Stopped Out'].sum()
             held_count = n_trades - stopped_count
             
+            # Compare to 5D buy & hold
             results_with_5d = results[results['5D Return'].notna()]
             if len(results_with_5d) > 0:
                 avg_5d_return = results_with_5d['5D Return'].mean() * 100
@@ -650,6 +901,7 @@ with tab2:
                 total_5d_return = None
                 avg_diff = None
             
+            # Display metrics in clear cards
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -686,8 +938,10 @@ with tab2:
             
             st.markdown("")
             
+            # Strategy vs Buy & Hold comparison
             if avg_5d_return is not None:
                 st.markdown("### 🔄 Strategy vs Buy & Hold (5D)")
+                
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
@@ -703,8 +957,8 @@ with tab2:
                 with col3:
                     st.markdown("**Difference (Strategy - B&H)**")
                     diff_total = total_return - total_5d_return
-                    st.metric("Total Diff", f"{diff_total:+.1f}%")
-                    st.metric("Avg Diff", f"{avg_diff:+.2f}%")
+                    st.metric("Total Diff", f"{diff_total:+.1f}%", delta_color="normal")
+                    st.metric("Avg Diff", f"{avg_diff:+.2f}%", delta_color="normal")
                 
                 if diff_total > 0:
                     st.success(f"✅ Stop loss strategy **outperformed** buy & hold by {diff_total:+.1f}%")
@@ -712,14 +966,18 @@ with tab2:
                     st.warning(f"⚠️ Stop loss strategy **underperformed** buy & hold by {diff_total:.1f}%")
             
             st.markdown("---")
+            
+            # Exit Breakdown
             st.markdown("### 🚪 Exit Breakdown")
             
+            # Count different exit types
             gap_down_count = results['Gap Down'].sum() if 'Gap Down' in results.columns else 0
             stop_loss_count = stopped_count - gap_down_count
             
             col1, col2, col3 = st.columns(3)
             
             with col1:
+                # Gap downs (opened below stop)
                 gap_trades = results[results['Gap Down'] == True] if 'Gap Down' in results.columns else pd.DataFrame()
                 gap_avg = gap_trades['Backtest Return'].mean() * 100 if len(gap_trades) > 0 else 0
                 
@@ -728,11 +986,12 @@ with tab2:
                     <div class="exit-count">{gap_down_count}</div>
                     <div class="exit-pct">({gap_down_count/n_trades*100:.1f}% of trades)</div>
                     <div class="exit-return" style="color: #ef4444;">{gap_avg:+.2f}% avg</div>
-                    <div class="exit-label">📉 Gap Down</div>
+                    <div class="exit-label">📉 Gap Down (opened below stop)</div>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
+                # Normal stop losses
                 stop_trades = results[(results['Stopped Out'] == True) & (results.get('Gap Down', False) == False)]
                 stop_avg = stop_trades['Backtest Return'].mean() * 100 if len(stop_trades) > 0 else 0
                 
@@ -758,11 +1017,208 @@ with tab2:
                 </div>
                 """, unsafe_allow_html=True)
             
+            st.markdown("")
+            
+            # Additional details
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if stopped_count > 0:
+                    stopped_trades = results[results['Stopped Out'] == True]
+                    st.markdown("**When stops/gaps occurred:**")
+                    stop_day_dist = stopped_trades['Exit Day'].value_counts().sort_index()
+                    for day, count in stop_day_dist.items():
+                        pct = count / len(stopped_trades) * 100
+                        st.markdown(f"- Day {day}: {count} trades ({pct:.0f}%)")
+                    
+                    if gap_down_count > 0:
+                        st.markdown(f"\n**Gap downs:** {gap_down_count} trades gapped below {stop_loss*100:.0f}% stop")
+                        worst_gap = gap_trades['Backtest Return'].min() * 100
+                        st.markdown(f"- Worst gap: {worst_gap:+.1f}%")
+            
+            with col2:
+                if len(held_trades) > 0:
+                    st.markdown("**Held trade performance:**")
+                    winners = len(held_trades[held_trades['Backtest Return'] > 0])
+                    losers = len(held_trades[held_trades['Backtest Return'] <= 0])
+                    st.markdown(f"- Winners: {winners} ({winners/len(held_trades)*100:.0f}%)")
+                    st.markdown(f"- Losers: {losers} ({losers/len(held_trades)*100:.0f}%)")
+            
             st.markdown("---")
+            
+            # Charts
+            st.markdown("### 📊 Performance Charts")
+            
+            chart_tab1, chart_tab2, chart_tab3 = st.tabs(["Cumulative Returns", "Return Distribution", "Stop Loss Timing"])
+            
+            with chart_tab1:
+                results_sorted = results.sort_values('Earnings Date').copy()
+                
+                # Use simple cumulative sum (not compounded) for clearer visualization
+                results_sorted['Cumulative'] = results_sorted['Backtest Return'].cumsum() * 100
+                
+                if '5D Return' in results_sorted.columns:
+                    results_sorted['Cumulative_5D'] = results_sorted['5D Return'].fillna(0).cumsum() * 100
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=list(range(1, len(results_sorted) + 1)),
+                    y=results_sorted['Cumulative'],
+                    mode='lines',
+                    line=dict(color='#3b82f6', width=2),
+                    name=f'Strategy ({stop_loss*100:.0f}% stop)' if stop_loss else 'Strategy (no stop)',
+                    hovertemplate='Trade %{x}<br>Cumulative: %{y:+.1f}%<extra></extra>'
+                ))
+                
+                if '5D Return' in results_sorted.columns:
+                    fig.add_trace(go.Scatter(
+                        x=list(range(1, len(results_sorted) + 1)),
+                        y=results_sorted['Cumulative_5D'],
+                        mode='lines',
+                        line=dict(color='#64748b', width=2, dash='dash'),
+                        name='Buy & Hold 5D',
+                        hovertemplate='Trade %{x}<br>Cumulative: %{y:+.1f}%<extra></extra>'
+                    ))
+                
+                fig.add_hline(y=0, line_dash="dash", line_color="#475569")
+                fig.update_layout(
+                    title="Cumulative Return: Strategy vs Buy & Hold (Simple Sum)",
+                    xaxis_title="Trade #",
+                    yaxis_title="Cumulative Return %",
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#94a3b8',
+                    height=400,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.5, xanchor="center")
+                )
+                fig.update_xaxes(gridcolor='#1e293b')
+                fig.update_yaxes(gridcolor='#1e293b')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with chart_tab2:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = go.Figure()
+                    fig.add_trace(go.Histogram(
+                        x=results['Backtest Return'] * 100,
+                        nbinsx=30,
+                        marker_color='#3b82f6',
+                        name='Strategy Returns'
+                    ))
+                    fig.add_vline(x=0, line_dash="dash", line_color="#64748b")
+                    if stop_loss:
+                        fig.add_vline(x=stop_loss*100, line_dash="dash", line_color="#ef4444", 
+                                     annotation_text=f"Stop: {stop_loss*100:.0f}%")
+                    fig.update_layout(
+                        title="Strategy Return Distribution",
+                        xaxis_title="Return %",
+                        yaxis_title="Count",
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#94a3b8',
+                        height=350
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    if 'Diff vs 5D' in results.columns:
+                        diff_data = results['Diff vs 5D'].dropna() * 100
+                        fig = go.Figure()
+                        colors = ['#22c55e' if x >= 0 else '#ef4444' for x in diff_data]
+                        fig.add_trace(go.Histogram(
+                            x=diff_data,
+                            nbinsx=30,
+                            marker_color='#f59e0b',
+                            name='Difference'
+                        ))
+                        fig.add_vline(x=0, line_dash="dash", line_color="#64748b")
+                        fig.update_layout(
+                            title="Strategy vs 5D Return (Difference)",
+                            xaxis_title="Difference %",
+                            yaxis_title="Count",
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            font_color='#94a3b8',
+                            height=350
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            with chart_tab3:
+                if stopped_count > 0:
+                    stopped_trades = results[results['Stopped Out'] == True].copy()
+                    
+                    # Create visualization of when stops were triggered
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # By day
+                        day_counts = stopped_trades['Exit Day'].value_counts().sort_index().reset_index()
+                        day_counts.columns = ['Day', 'Count']
+                        
+                        fig = px.bar(day_counts, x='Day', y='Count', 
+                                    title='Stop Loss Triggers by Trading Day',
+                                    color='Count', color_continuous_scale='Reds')
+                        fig.update_layout(
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            font_color='#94a3b8',
+                            height=300,
+                            showlegend=False
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        # By hour
+                        if 'Exit Hour' in stopped_trades.columns:
+                            hour_counts = stopped_trades['Exit Hour'].value_counts().sort_index().reset_index()
+                            hour_counts.columns = ['Hour', 'Count']
+                            
+                            fig = px.bar(hour_counts, x='Hour', y='Count',
+                                        title='Stop Loss Triggers by Hour',
+                                        color='Count', color_continuous_scale='Reds')
+                            fig.update_layout(
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                font_color='#94a3b8',
+                                height=300,
+                                showlegend=False
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Show the stopped trades
+                    st.markdown("**Stopped Out Trades Detail:**")
+                    stopped_display = stopped_trades[['Ticker', 'Earnings Date', 'Exit Day', 'Exit Hour', 'Backtest Return', '5D Return', 'Diff vs 5D', 'Min Intraday']].copy()
+                    stopped_display['Earnings Date'] = pd.to_datetime(stopped_display['Earnings Date']).dt.strftime('%Y-%m-%d')
+                    stopped_display['Backtest Return'] = stopped_display['Backtest Return'] * 100
+                    stopped_display['5D Return'] = stopped_display['5D Return'] * 100
+                    stopped_display['Diff vs 5D'] = stopped_display['Diff vs 5D'] * 100
+                    stopped_display['Min Intraday'] = stopped_display['Min Intraday'] * 100
+                    
+                    st.dataframe(
+                        stopped_display, 
+                        use_container_width=True, 
+                        hide_index=True, 
+                        height=250,
+                        column_config={
+                            "Backtest Return": st.column_config.NumberColumn("Backtest Return", format="%+.2f%%"),
+                            "5D Return": st.column_config.NumberColumn("5D Return", format="%+.2f%%"),
+                            "Diff vs 5D": st.column_config.NumberColumn("Diff vs 5D", format="%+.2f%%"),
+                            "Min Intraday": st.column_config.NumberColumn("Min Intraday", format="%+.2f%%"),
+                        }
+                    )
+                else:
+                    st.info("No trades were stopped out with the current stop loss setting.")
+            
+            st.markdown("---")
+            
+            # Full Trade List
             st.markdown("### 📋 All Trades")
             
             display_df = results.copy()
             display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
+            
+            # Keep numeric columns as numbers for sorting, use column_config for formatting
             display_df['Backtest Return'] = display_df['Backtest Return'] * 100
             display_df['5D Return'] = display_df['5D Return'] * 100
             display_df['Diff vs 5D'] = display_df['Diff vs 5D'] * 100
@@ -789,6 +1245,7 @@ with tab2:
                 }
             )
             
+            # Download button
             csv = results.to_csv(index=False)
             st.download_button(
                 label="📥 Download Results CSV",
@@ -796,461 +1253,131 @@ with tab2:
                 file_name=f"backtest_results_stop{int(stop_loss*100) if stop_loss else 'none'}_day{max_days}.csv",
                 mime="text/csv"
             )
-
-# =============================================================================
-# TAB 3: EARNINGS SURPRISE ANALYSIS
-# =============================================================================
-with tab3:
-    st.subheader("📊 Earnings Surprise Analysis")
-    st.markdown("Analyze how EPS surprise magnitude affects post-earnings returns.")
-    
-    returns_df_surprise = load_returns_data()
-    
-    if returns_df_surprise is None or returns_df_surprise.empty:
-        st.warning("No returns data available. Please ensure returns_tracker.csv is accessible.")
-    else:
-        df_with_surprise = returns_df_surprise[returns_df_surprise['EPS Surprise (%)'].notna()].copy()
-        
-        if df_with_surprise.empty:
-            st.warning("No trades found with EPS Surprise data.")
-        else:
-            df_with_surprise['Surprise Category'] = df_with_surprise['EPS Surprise (%)'].apply(categorize_surprise)
-            
-            # Summary metrics
-            st.markdown("### 📈 Dataset Overview")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.markdown(f"""
-                <div class="surprise-card">
-                    <div class="surprise-value metric-white">{len(df_with_surprise)}</div>
-                    <div class="surprise-label">Trades with EPS Data</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                avg_surprise = df_with_surprise['EPS Surprise (%)'].mean()
-                st.markdown(f"""
-                <div class="surprise-card">
-                    <div class="surprise-value metric-{'green' if avg_surprise > 0 else 'red'}">{avg_surprise:+.1f}%</div>
-                    <div class="surprise-label">Avg EPS Surprise</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                beats = (df_with_surprise['EPS Surprise (%)'] > 0).sum()
-                beat_pct = beats / len(df_with_surprise) * 100
-                st.markdown(f"""
-                <div class="surprise-card">
-                    <div class="surprise-value metric-green">{beat_pct:.1f}%</div>
-                    <div class="surprise-label">Beat Rate</div>
-                    <div class="surprise-sub">{beats} of {len(df_with_surprise)} stocks</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                if '5D Return' in df_with_surprise.columns:
-                    avg_5d = df_with_surprise['5D Return'].mean() * 100
-                    st.markdown(f"""
-                    <div class="surprise-card">
-                        <div class="surprise-value metric-{'green' if avg_5d > 0 else 'red'}">{avg_5d:+.2f}%</div>
-                        <div class="surprise-label">Avg 5D Return</div>
-                    </div>
-                    """, unsafe_allow_html=True)
             
             st.markdown("---")
             
-            # Performance by Surprise Category
-            st.markdown("### 🎯 Performance by Surprise Category")
+            # Stop Loss Comparison Tool
+            st.markdown("### 🔬 Compare Stop Loss Levels")
             
-            category_order = ['Big Miss (≤-20%)', 'Miss (-20% to -5%)', 'In-Line (-5% to 5%)', 
-                             'Beat (5% to 20%)', 'Strong Beat (20% to 50%)', 'Blowout (≥50%)']
-            
-            category_stats = []
-            for cat in category_order:
-                cat_df = df_with_surprise[df_with_surprise['Surprise Category'] == cat]
-                if len(cat_df) > 0:
-                    stats = {
-                        'Category': cat,
-                        'Count': len(cat_df),
-                        'Avg Surprise': cat_df['EPS Surprise (%)'].mean(),
-                        '1D Return': cat_df['1D Return'].mean() * 100 if '1D Return' in cat_df.columns else None,
-                        '3D Return': cat_df['3D Return'].mean() * 100 if '3D Return' in cat_df.columns else None,
-                        '5D Return': cat_df['5D Return'].mean() * 100 if '5D Return' in cat_df.columns else None,
-                        '7D Return': cat_df['7D Return'].mean() * 100 if '7D Return' in cat_df.columns else None,
-                        'Win Rate 5D': (cat_df['5D Return'] > 0).mean() * 100 if '5D Return' in cat_df.columns else None,
-                    }
-                    category_stats.append(stats)
-            
-            cat_stats_df = pd.DataFrame(category_stats)
-            
-            if not cat_stats_df.empty:
-                col1, col2 = st.columns([2, 1])
+            if st.button("Run Full Comparison", use_container_width=True):
+                stop_levels = [None, -0.02, -0.03, -0.04, -0.05, -0.06, -0.08, -0.10, -0.15]
+                
+                comparison = []
+                progress = st.progress(0)
+                
+                for i, stop in enumerate(stop_levels):
+                    # Quick backtest for comparison
+                    res_list = []
+                    trades = hourly_df.groupby(['Ticker', 'Earnings Date']).first().reset_index()
+                    
+                    for _, trade in trades.iterrows():
+                        ticker = trade['Ticker']
+                        earnings_date = trade['Earnings Date']
+                        
+                        trade_data = hourly_df[
+                            (hourly_df['Ticker'] == ticker) & 
+                            (hourly_df['Earnings Date'] == earnings_date) &
+                            (hourly_df['Trading Day'] >= 1) &
+                            (hourly_df['Trading Day'] <= max_days)
+                        ].sort_values('Datetime')
+                        
+                        if trade_data.empty:
+                            continue
+                        
+                        exit_return = None
+                        stopped = False
+                        gap_down = False
+                        first_candle = True
+                        
+                        for _, hour in trade_data.iterrows():
+                            ret = hour['Return From Earnings (%)'] / 100
+                            if stop is not None and ret <= stop:
+                                # Gap down: first candle opens below stop
+                                if first_candle and ret < stop:
+                                    exit_return = ret  # Take actual gap loss
+                                    gap_down = True
+                                else:
+                                    exit_return = stop
+                                stopped = True
+                                break
+                            first_candle = False
+                        
+                        if exit_return is None:
+                            last_day = trade_data[trade_data['Trading Day'] == trade_data['Trading Day'].max()]
+                            if not last_day.empty:
+                                exit_return = last_day['Return From Earnings (%)'].iloc[-1] / 100
+                        
+                        if exit_return is not None:
+                            res_list.append({
+                                'Return': exit_return, 
+                                'Stopped': stopped,
+                                'Gap Down': gap_down
+                            })
+                    
+                    if res_list:
+                        res_df = pd.DataFrame(res_list)
+                        comparison.append({
+                            'Stop Loss': f"{stop*100:.0f}%" if stop else "None",
+                            'Stop Value': stop if stop else 0,
+                            'Total Return': res_df['Return'].sum() * 100,
+                            'Avg Return': res_df['Return'].mean() * 100,
+                            'Win Rate': (res_df['Return'] > 0).mean() * 100,
+                            'Stopped %': res_df['Stopped'].mean() * 100 if stop else 0,
+                            'Gap Downs': res_df['Gap Down'].sum() if stop else 0,
+                            'Trades': len(res_df)
+                        })
+                    
+                    progress.progress((i + 1) / len(stop_levels))
+                
+                progress.empty()
+                comp_df = pd.DataFrame(comparison)
+                
+                # Find best
+                best_idx = comp_df['Total Return'].idxmax()
+                
+                col1, col2 = st.columns([1.5, 1])
                 
                 with col1:
                     fig = go.Figure()
-                    time_periods = [('1D Return', '#3b82f6'), ('3D Return', '#8b5cf6'), 
-                                   ('5D Return', '#22c55e'), ('7D Return', '#f59e0b')]
-                    
-                    for period, color in time_periods:
-                        if period in cat_stats_df.columns and cat_stats_df[period].notna().any():
-                            fig.add_trace(go.Bar(
-                                name=period.replace(' Return', ''),
-                                x=cat_stats_df['Category'],
-                                y=cat_stats_df[period],
-                                marker_color=color
-                            ))
-                    
-                    fig.add_hline(y=0, line_dash="dash", line_color="#475569")
+                    colors = ['#22c55e' if i == best_idx else '#3b82f6' for i in range(len(comp_df))]
+                    fig.add_trace(go.Bar(
+                        x=comp_df['Stop Loss'],
+                        y=comp_df['Total Return'],
+                        marker_color=colors,
+                        text=comp_df['Total Return'].apply(lambda x: f"{x:+.1f}%"),
+                        textposition='outside'
+                    ))
                     fig.update_layout(
-                        title="Average Returns by Surprise Category",
-                        xaxis_title="Surprise Category",
-                        yaxis_title="Average Return (%)",
-                        barmode='group',
+                        title="Total Return by Stop Loss Level",
+                        xaxis_title="Stop Loss",
+                        yaxis_title="Total Return %",
                         plot_bgcolor='rgba(0,0,0,0)',
                         paper_bgcolor='rgba(0,0,0,0)',
                         font_color='#94a3b8',
                         height=400,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.5, xanchor="center"),
-                        xaxis=dict(tickangle=-45)
+                        xaxis=dict(type='category')  # Force categorical x-axis
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
-                    st.markdown("**Category Breakdown**")
-                    display_stats = cat_stats_df.copy()
-                    display_stats['Avg Surprise'] = display_stats['Avg Surprise'].apply(lambda x: f"{x:+.1f}%")
-                    for col in ['1D Return', '3D Return', '5D Return', '7D Return']:
-                        if col in display_stats.columns:
-                            display_stats[col] = display_stats[col].apply(lambda x: f"{x:+.2f}%" if pd.notna(x) else "N/A")
-                    if 'Win Rate 5D' in display_stats.columns:
-                        display_stats['Win Rate 5D'] = display_stats['Win Rate 5D'].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                    st.markdown("**Comparison Table**")
+                    display_comp = comp_df.copy()
+                    display_comp['Total Return'] = display_comp['Total Return'].apply(lambda x: f"{x:+.1f}%")
+                    display_comp['Avg Return'] = display_comp['Avg Return'].apply(lambda x: f"{x:+.2f}%")
+                    display_comp['Win Rate'] = display_comp['Win Rate'].apply(lambda x: f"{x:.1f}%")
+                    display_comp['Stopped %'] = display_comp['Stopped %'].apply(lambda x: f"{x:.1f}%")
+                    display_comp = display_comp.drop(columns=['Stop Value'])
                     
-                    st.dataframe(display_stats, use_container_width=True, hide_index=True, height=300)
-            
-            st.markdown("---")
-            
-            # Correlation Analysis
-            st.markdown("### 📉 Correlation: Surprise vs Returns")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if '5D Return' in df_with_surprise.columns:
-                    fig = px.scatter(
-                        df_with_surprise,
-                        x='EPS Surprise (%)',
-                        y=df_with_surprise['5D Return'] * 100,
-                        color='Surprise Category',
-                        color_discrete_map={cat: get_surprise_color(cat) for cat in category_order},
-                        hover_data=['Ticker', 'Company Name'] if 'Company Name' in df_with_surprise.columns else ['Ticker'],
-                        title="EPS Surprise vs 5-Day Return"
-                    )
+                    st.dataframe(display_comp, use_container_width=True, hide_index=True)
                     
-                    # Add trend line
-                    x_clean = df_with_surprise['EPS Surprise (%)'].dropna()
-                    y_clean = (df_with_surprise.loc[x_clean.index, '5D Return'] * 100).dropna()
-                    common_idx = x_clean.index.intersection(y_clean.index)
-                    
-                    if len(common_idx) > 2:
-                        slope, intercept, r_value, p_value, std_err = stats.linregress(
-                            x_clean.loc[common_idx], y_clean.loc[common_idx]
-                        )
-                        x_range = np.linspace(x_clean.min(), x_clean.max(), 100)
-                        y_range = slope * x_range + intercept
-                        
-                        fig.add_trace(go.Scatter(
-                            x=x_range, y=y_range,
-                            mode='lines',
-                            name=f'Trend (R²={r_value**2:.3f})',
-                            line=dict(color='#f1f5f9', dash='dash', width=2)
-                        ))
-                    
-                    fig.add_hline(y=0, line_dash="dot", line_color="#475569")
-                    fig.add_vline(x=0, line_dash="dot", line_color="#475569")
-                    
-                    fig.update_layout(
-                        xaxis_title="EPS Surprise (%)",
-                        yaxis_title="5-Day Return (%)",
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=450,
-                        showlegend=True,
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.3, x=0.5, xanchor="center")
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                # Correlation matrix
-                corr_cols = ['EPS Surprise (%)', '1D Return', '3D Return', '5D Return', '7D Return', '10D Return']
-                corr_cols = [c for c in corr_cols if c in df_with_surprise.columns]
-                
-                if len(corr_cols) > 1:
-                    corr_df = df_with_surprise[corr_cols].copy()
-                    for col in corr_cols:
-                        if 'Return' in col:
-                            corr_df[col] = corr_df[col] * 100
-                    
-                    corr_matrix = corr_df.corr()
-                    
-                    fig = px.imshow(
-                        corr_matrix,
-                        text_auto='.2f',
-                        color_continuous_scale='RdBu_r',
-                        aspect='auto',
-                        title="Correlation Matrix"
-                    )
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=450
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    if 'EPS Surprise (%)' in corr_matrix.columns:
-                        st.markdown("**Key Correlations with EPS Surprise:**")
-                        for col in ['1D Return', '3D Return', '5D Return', '7D Return']:
-                            if col in corr_matrix.columns:
-                                corr_val = corr_matrix.loc['EPS Surprise (%)', col]
-                                color = 'green' if corr_val > 0 else 'red'
-                                st.markdown(f"- {col}: **:{color}[{corr_val:+.3f}]**")
-            
-            st.markdown("---")
-            
-            # Distribution Analysis
-            st.markdown("### 📊 Distribution Analysis")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig = go.Figure()
-                fig.add_trace(go.Histogram(
-                    x=df_with_surprise['EPS Surprise (%)'],
-                    nbinsx=40,
-                    marker_color='#3b82f6',
-                    name='EPS Surprise'
-                ))
-                fig.add_vline(x=0, line_dash="dash", line_color="#ef4444", annotation_text="0%")
-                fig.add_vline(x=df_with_surprise['EPS Surprise (%)'].median(), 
-                             line_dash="dash", line_color="#22c55e", 
-                             annotation_text=f"Median: {df_with_surprise['EPS Surprise (%)'].median():.1f}%")
-                fig.update_layout(
-                    title="EPS Surprise Distribution",
-                    xaxis_title="EPS Surprise (%)",
-                    yaxis_title="Count",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#94a3b8',
-                    height=350
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                cat_counts = df_with_surprise['Surprise Category'].value_counts()
-                colors = [get_surprise_color(cat) for cat in cat_counts.index]
-                
-                fig = go.Figure(data=[go.Pie(
-                    labels=cat_counts.index,
-                    values=cat_counts.values,
-                    marker_colors=colors,
-                    textinfo='label+percent',
-                    textposition='outside',
-                    hole=0.4
-                )])
-                fig.update_layout(
-                    title="Surprise Category Distribution",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#94a3b8',
-                    height=350,
-                    showlegend=False
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("---")
-            
-            # Sector Analysis
-            if 'Sector' in df_with_surprise.columns:
-                st.markdown("### 🏢 Sector Analysis")
-                
-                sector_stats = df_with_surprise.groupby('Sector').agg({
-                    'EPS Surprise (%)': ['mean', 'count'],
-                    '5D Return': 'mean' if '5D Return' in df_with_surprise.columns else 'count'
-                }).round(2)
-                
-                if '5D Return' in df_with_surprise.columns:
-                    sector_stats.columns = ['Avg Surprise', 'Count', 'Avg 5D Return']
-                    sector_stats['Avg 5D Return'] = sector_stats['Avg 5D Return'] * 100
-                else:
-                    sector_stats.columns = ['Avg Surprise', 'Count', 'Count2']
-                    sector_stats = sector_stats.drop(columns=['Count2'])
-                
-                sector_stats = sector_stats.sort_values('Count', ascending=False)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    fig = px.bar(
-                        sector_stats.reset_index(),
-                        x='Sector',
-                        y='Avg Surprise',
-                        color='Avg Surprise',
-                        color_continuous_scale='RdYlGn',
-                        title="Average EPS Surprise by Sector"
-                    )
-                    fig.add_hline(y=0, line_dash="dash", line_color="#475569")
-                    fig.update_layout(
-                        xaxis_title="",
-                        yaxis_title="Avg EPS Surprise (%)",
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#94a3b8',
-                        height=400,
-                        xaxis=dict(tickangle=-45),
-                        showlegend=False
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    st.markdown("**Sector Statistics**")
-                    display_sector = sector_stats.reset_index()
-                    display_sector['Avg Surprise'] = display_sector['Avg Surprise'].apply(lambda x: f"{x:+.1f}%")
-                    if 'Avg 5D Return' in display_sector.columns:
-                        display_sector['Avg 5D Return'] = display_sector['Avg 5D Return'].apply(lambda x: f"{x:+.2f}%")
-                    st.dataframe(display_sector, use_container_width=True, hide_index=True, height=350)
-            
-            st.markdown("---")
-            
-            # Optimal Surprise Threshold Analysis
-            st.markdown("### 🎯 Optimal Surprise Threshold")
-            st.markdown("Find the EPS surprise threshold that maximizes returns.")
-            
-            if '5D Return' in df_with_surprise.columns:
-                thresholds = list(range(-50, 110, 10))
-                threshold_results = []
-                
-                for thresh in thresholds:
-                    above_thresh = df_with_surprise[df_with_surprise['EPS Surprise (%)'] >= thresh]
-                    if len(above_thresh) >= 5:
-                        avg_ret = above_thresh['5D Return'].mean() * 100
-                        win_rate = (above_thresh['5D Return'] > 0).mean() * 100
-                        threshold_results.append({
-                            'Threshold': thresh,
-                            'Avg 5D Return': avg_ret,
-                            'Win Rate': win_rate,
-                            'Count': len(above_thresh)
-                        })
-                
-                if threshold_results:
-                    thresh_df = pd.DataFrame(threshold_results)
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        fig = make_subplots(specs=[[{"secondary_y": True}]])
-                        
-                        fig.add_trace(
-                            go.Scatter(
-                                x=thresh_df['Threshold'],
-                                y=thresh_df['Avg 5D Return'],
-                                mode='lines+markers',
-                                name='Avg 5D Return',
-                                line=dict(color='#3b82f6', width=2),
-                                marker=dict(size=8)
-                            ),
-                            secondary_y=False
-                        )
-                        
-                        fig.add_trace(
-                            go.Scatter(
-                                x=thresh_df['Threshold'],
-                                y=thresh_df['Win Rate'],
-                                mode='lines+markers',
-                                name='Win Rate',
-                                line=dict(color='#22c55e', width=2, dash='dash'),
-                                marker=dict(size=8)
-                            ),
-                            secondary_y=True
-                        )
-                        
-                        fig.add_hline(y=0, line_dash="dot", line_color="#475569", secondary_y=False)
-                        
-                        fig.update_layout(
-                            title="Performance by Minimum Surprise Threshold",
-                            xaxis_title="Minimum EPS Surprise (%)",
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            font_color='#94a3b8',
-                            height=400,
-                            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.5, xanchor="center")
-                        )
-                        fig.update_yaxes(title_text="Avg 5D Return (%)", secondary_y=False, gridcolor='#1e293b')
-                        fig.update_yaxes(title_text="Win Rate (%)", secondary_y=True)
-                        fig.update_xaxes(gridcolor='#1e293b')
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    with col2:
-                        best_idx = thresh_df['Avg 5D Return'].idxmax()
-                        best_thresh = thresh_df.loc[best_idx, 'Threshold']
-                        best_return = thresh_df.loc[best_idx, 'Avg 5D Return']
-                        best_win = thresh_df.loc[best_idx, 'Win Rate']
-                        best_count = thresh_df.loc[best_idx, 'Count']
-                        
-                        st.markdown("**Optimal Threshold Analysis**")
-                        
-                        st.markdown(f"""
-                        <div class="surprise-card">
-                            <div class="surprise-value metric-blue">≥{best_thresh}%</div>
-                            <div class="surprise-label">Optimal Surprise Threshold</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        st.metric("Avg 5D Return", f"{best_return:+.2f}%")
-                        st.metric("Win Rate", f"{best_win:.1f}%")
-                        st.metric("Sample Size", f"{best_count} trades")
-                        
-                        st.markdown("---")
-                        st.markdown("**Threshold Table**")
-                        display_thresh = thresh_df.copy()
-                        display_thresh['Threshold'] = display_thresh['Threshold'].apply(lambda x: f"≥{x}%")
-                        display_thresh['Avg 5D Return'] = display_thresh['Avg 5D Return'].apply(lambda x: f"{x:+.2f}%")
-                        display_thresh['Win Rate'] = display_thresh['Win Rate'].apply(lambda x: f"{x:.1f}%")
-                        st.dataframe(display_thresh, use_container_width=True, hide_index=True, height=250)
-            
-            st.markdown("---")
-            
-            # Individual Trades Table
-            st.markdown("### 📋 Individual Trades with Surprise Data")
-            
-            display_cols = ['Ticker', 'Company Name', 'Earnings Date', 'EPS Estimate', 'Reported EPS', 
-                           'EPS Surprise (%)', 'Surprise Category', '1D Return', '3D Return', '5D Return', 'Sector']
-            display_cols = [c for c in display_cols if c in df_with_surprise.columns]
-            
-            display_surprise = df_with_surprise[display_cols].copy()
-            display_surprise['Earnings Date'] = pd.to_datetime(display_surprise['Earnings Date']).dt.strftime('%Y-%m-%d')
-            
-            for col in ['1D Return', '3D Return', '5D Return', '7D Return', '10D Return']:
-                if col in display_surprise.columns:
-                    display_surprise[col] = display_surprise[col] * 100
-            
-            st.dataframe(
-                display_surprise.sort_values('EPS Surprise (%)', ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                height=400,
-                column_config={
-                    "EPS Surprise (%)": st.column_config.NumberColumn("EPS Surprise", format="%+.1f%%"),
-                    "1D Return": st.column_config.NumberColumn("1D Return", format="%+.2f%%"),
-                    "3D Return": st.column_config.NumberColumn("3D Return", format="%+.2f%%"),
-                    "5D Return": st.column_config.NumberColumn("5D Return", format="%+.2f%%"),
-                }
-            )
+                    best_stop = comp_df.loc[best_idx, 'Stop Loss']
+                    best_return = comp_df.loc[best_idx, 'Total Return']
+                    st.success(f"**Best: {best_stop}** with {best_return:+.1f}% total return")
 
 # =============================================================================
-# TAB 4: POWERBI
+# TAB 3: POWERBI
 # =============================================================================
-with tab4:
+with tab3:
     st.markdown("### PowerBI Dashboard")
     
     st.markdown(
