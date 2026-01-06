@@ -8,7 +8,6 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy import stats
 
 # --- Page Config ---
 st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="📈", layout="wide")
@@ -572,7 +571,7 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
 
 st.title("Earnings Momentum Strategy")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "Stop Loss Analysis", "Earnings Analysis", "PowerBI"])
+tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis"])
 
 # =============================================================================
 # TAB 1: STOCK SCREENER
@@ -645,9 +644,9 @@ with tab1:
         st.caption("Click Find Stocks to scan.")
 
 # =============================================================================
-# TAB 2: STOP LOSS ANALYSIS
+# TAB 3: STOP LOSS ANALYSIS
 # =============================================================================
-with tab2:
+with tab3:
     hourly_df = load_hourly_prices()
     returns_df = load_returns_data()
     earnings_df = load_earnings_universe()
@@ -1376,9 +1375,9 @@ with tab2:
                     st.success(f"**Best: {best_stop}** with {best_return:+.1f}% total return")
 
 # =============================================================================
-# TAB 3: EARNINGS ANALYSIS
+# TAB 4: EARNINGS ANALYSIS
 # =============================================================================
-with tab3:
+with tab4:
     st.subheader("📊 Earnings Surprise Analysis")
     st.markdown("Analyze how earnings beats/misses and surprise magnitude affect stock returns")
     
@@ -1395,15 +1394,15 @@ with tab3:
             st.success(f"Loaded {len(returns_df)} rows")
     
     if returns_df is not None and not returns_df.empty:
+        # Filter to only include stocks where Date Check is OK
+        original_count = len(returns_df)
+        if 'Date Check' in returns_df.columns:
+            returns_df = returns_df[returns_df['Date Check'] == 'OK']
+            filtered_count = original_count - len(returns_df)
+            if filtered_count > 0:
+                st.caption(f"ℹ️ Filtered out {filtered_count} trades with incorrect earnings dates (Date Check ≠ OK)")
+        
         st.success(f"✅ Loaded {len(returns_df)} trades from returns tracker")
-        
-        # Show available earnings columns
-        earnings_cols = ['EPS Estimate', 'Reported EPS', 'EPS Surprise (%)', 'EPS (TTM)', 'P/E', 'Forward P/E', 'Sector']
-        available_earnings_cols = [c for c in earnings_cols if c in returns_df.columns]
-        
-        with st.expander("📋 Available Earnings Data Columns"):
-            st.write(available_earnings_cols)
-            st.caption(f"Total columns in dataset: {len(returns_df.columns)}")
         
         # Clean up the data
         analysis_df = returns_df.copy()
@@ -1444,9 +1443,9 @@ with tab3:
             
             st.markdown("---")
             
-            # Create analysis tabs
-            analysis_tab1, analysis_tab2, analysis_tab3, analysis_tab4 = st.tabs([
-                "Beat vs Miss", "Surprise Magnitude", "Sector Analysis", "Raw Data"
+            # Create analysis tabs (removed Sector Analysis)
+            analysis_tab1, analysis_tab2, analysis_tab3 = st.tabs([
+                "Beat vs Miss", "Surprise Magnitude", "Raw Data"
             ])
             
             with analysis_tab1:
@@ -1472,11 +1471,11 @@ with tab3:
                     known_df = analysis_df[analysis_df['Surprise Category'] != 'Unknown']
                     
                     if len(known_df) > 0:
-                        # Calculate metrics by category
+                        # Calculate metrics by category including Total Return
                         category_stats = known_df.groupby('Surprise Category').agg({
-                            return_col: ['mean', 'median', 'count', 'std'],
+                            return_col: ['sum', 'mean', 'median', 'count', 'std'],
                         }).round(2)
-                        category_stats.columns = ['Avg Return', 'Median Return', 'Count', 'Std Dev']
+                        category_stats.columns = ['Total Return', 'Avg Return', 'Median Return', 'Count', 'Std Dev']
                         category_stats['Win Rate'] = known_df.groupby('Surprise Category')[return_col].apply(
                             lambda x: (x > 0).mean() * 100
                         ).round(1)
@@ -1531,6 +1530,7 @@ with tab3:
                                 use_container_width=True,
                                 hide_index=True,
                                 column_config={
+                                    "Total Return": st.column_config.NumberColumn(format="%.1f%%"),
                                     "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
                                     "Median Return": st.column_config.NumberColumn(format="%.2f%%"),
                                     "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
@@ -1544,14 +1544,16 @@ with tab3:
                             
                             if len(beats) > 0 and len(misses) > 0:
                                 beat_avg = (beats['Avg Return'] * beats['Count']).sum() / beats['Count'].sum()
+                                beat_total = beats['Total Return'].sum()
                                 miss_avg = (misses['Avg Return'] * misses['Count']).sum() / misses['Count'].sum()
+                                miss_total = misses['Total Return'].sum()
                                 diff = beat_avg - miss_avg
                                 
                                 st.markdown("---")
                                 st.markdown(f"""
                                 **Key Insight:**
-                                - Beats avg: **{beat_avg:+.2f}%**
-                                - Misses avg: **{miss_avg:+.2f}%**
+                                - Beats: **{beat_avg:+.2f}%** avg, **{beat_total:+.1f}%** total
+                                - Misses: **{miss_avg:+.2f}%** avg, **{miss_total:+.1f}%** total
                                 - Spread: **{diff:+.2f}%**
                                 """)
                                 
@@ -1570,10 +1572,10 @@ with tab3:
                         )
                         
                         simple_stats = simple_df.groupby('Beat/Miss').agg({
-                            return_col: ['mean', 'median', 'count'],
+                            return_col: ['sum', 'mean', 'median', 'count'],
                             'EPS Surprise (%)': 'mean'
                         }).round(2)
-                        simple_stats.columns = ['Avg Return', 'Median Return', 'Count', 'Avg Surprise %']
+                        simple_stats.columns = ['Total Return', 'Avg Return', 'Median Return', 'Count', 'Avg Surprise %']
                         simple_stats['Win Rate'] = simple_df.groupby('Beat/Miss')[return_col].apply(
                             lambda x: (x > 0).mean() * 100
                         ).round(1)
@@ -1588,8 +1590,8 @@ with tab3:
                             if len(beat_row) > 0:
                                 st.markdown(f"""
                                 <div class="metric-card">
-                                    <div class="metric-value metric-green">{beat_row['Avg Return'].values[0]:+.2f}%</div>
-                                    <div class="metric-label">Beat Avg Return ({int(beat_row['Count'].values[0])} trades)</div>
+                                    <div class="metric-value metric-green">{beat_row['Total Return'].values[0]:+.1f}%</div>
+                                    <div class="metric-label">Beat Total Return ({int(beat_row['Count'].values[0])} trades)</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                         
@@ -1597,8 +1599,8 @@ with tab3:
                             if len(miss_row) > 0:
                                 st.markdown(f"""
                                 <div class="metric-card">
-                                    <div class="metric-value metric-red">{miss_row['Avg Return'].values[0]:+.2f}%</div>
-                                    <div class="metric-label">Miss Avg Return ({int(miss_row['Count'].values[0])} trades)</div>
+                                    <div class="metric-value metric-red">{miss_row['Total Return'].values[0]:+.1f}%</div>
+                                    <div class="metric-label">Miss Total Return ({int(miss_row['Count'].values[0])} trades)</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                         
@@ -1608,7 +1610,7 @@ with tab3:
                                 st.markdown(f"""
                                 <div class="metric-card">
                                     <div class="metric-value metric-blue">{spread:+.2f}%</div>
-                                    <div class="metric-label">Beat - Miss Spread</div>
+                                    <div class="metric-label">Beat - Miss Avg Spread</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                     else:
@@ -1630,13 +1632,12 @@ with tab3:
                         col1, col2 = st.columns([2, 1])
                         
                         with col1:
-                            # Scatter plot
+                            # Scatter plot without trendline (removed to avoid statsmodels dependency)
                             fig = px.scatter(
                                 scatter_df,
                                 x='EPS Surprise (%)',
                                 y=return_col,
-                                hover_data=['Ticker', 'Company Name', 'Sector'] if 'Company Name' in scatter_df.columns else ['Ticker'],
-                                trendline='ols',
+                                hover_data=['Ticker', 'Company Name'] if 'Company Name' in scatter_df.columns else ['Ticker'],
                                 title="EPS Surprise % vs Stock Return",
                                 color='Sector' if 'Sector' in scatter_df.columns else None
                             )
@@ -1665,25 +1666,40 @@ with tab3:
                             
                             st.markdown("")
                             
-                            # R-squared from trendline
-                            slope, intercept, r_value, p_value, std_err = stats.linregress(
-                                scatter_df['EPS Surprise (%)'], 
-                                scatter_df[return_col]
-                            )
+                            # Calculate regression stats using numpy
+                            x = scatter_df['EPS Surprise (%)'].values
+                            y = scatter_df[return_col].values
+                            
+                            # Linear regression using numpy
+                            n = len(x)
+                            x_mean, y_mean = np.mean(x), np.mean(y)
+                            slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
+                            intercept = y_mean - slope * x_mean
+                            
+                            # R-squared
+                            y_pred = slope * x + intercept
+                            ss_res = np.sum((y - y_pred) ** 2)
+                            ss_tot = np.sum((y - y_mean) ** 2)
+                            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+                            
+                            # Calculate t-statistic and p-value for slope
+                            se = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
+                            se_slope = se / np.sqrt(np.sum((x - x_mean) ** 2)) if np.sum((x - x_mean) ** 2) > 0 else 0
+                            t_stat = slope / se_slope if se_slope > 0 else 0
                             
                             st.markdown(f"""
                             **Regression Stats:**
-                            - R²: **{r_value**2:.3f}**
+                            - R²: **{r_squared:.3f}**
                             - Slope: **{slope:.4f}**
-                            - P-value: **{p_value:.4f}**
+                            - T-stat: **{t_stat:.2f}**
                             """)
                             
-                            if p_value < 0.05:
-                                st.success("✅ Statistically significant")
-                            elif p_value < 0.10:
+                            if abs(t_stat) > 1.96:
+                                st.success("✅ Statistically significant (|t| > 1.96)")
+                            elif abs(t_stat) > 1.65:
                                 st.info("ℹ️ Marginally significant")
                             else:
-                                st.warning("⚠️ Not significant (p > 0.10)")
+                                st.warning("⚠️ Not significant")
                             
                             st.markdown("---")
                             
@@ -1698,15 +1714,16 @@ with tab3:
                                 )
                                 
                                 quintile_stats = scatter_df.groupby('Surprise Quintile', observed=True)[return_col].agg(
-                                    ['mean', 'count']
+                                    ['sum', 'mean', 'count']
                                 ).round(2)
-                                quintile_stats.columns = ['Avg Return', 'Count']
+                                quintile_stats.columns = ['Total', 'Avg', 'Count']
                                 
                                 st.dataframe(
                                     quintile_stats,
                                     use_container_width=True,
                                     column_config={
-                                        "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
+                                        "Total": st.column_config.NumberColumn(format="%.1f%%"),
+                                        "Avg": st.column_config.NumberColumn(format="%.2f%%"),
                                     }
                                 )
                             except Exception as e:
@@ -1738,9 +1755,9 @@ with tab3:
                         scatter_df['Surprise Bucket'] = scatter_df['EPS Surprise (%)'].apply(bucket_surprise)
                         
                         bucket_stats = scatter_df.groupby('Surprise Bucket').agg({
-                            return_col: ['mean', 'median', 'count'],
+                            return_col: ['sum', 'mean', 'median', 'count'],
                         }).round(2)
-                        bucket_stats.columns = ['Avg Return', 'Median', 'Count']
+                        bucket_stats.columns = ['Total Return', 'Avg Return', 'Median', 'Count']
                         bucket_stats['Win Rate'] = scatter_df.groupby('Surprise Bucket')[return_col].apply(
                             lambda x: (x > 0).mean() * 100
                         ).round(1)
@@ -1785,6 +1802,7 @@ with tab3:
                                 use_container_width=True, 
                                 hide_index=True,
                                 column_config={
+                                    "Total Return": st.column_config.NumberColumn(format="%.1f%%"),
                                     "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
                                     "Median": st.column_config.NumberColumn(format="%.2f%%"),
                                     "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
@@ -1796,152 +1814,11 @@ with tab3:
                     st.warning("No EPS Surprise data available for magnitude analysis.")
             
             with analysis_tab3:
-                st.markdown("#### Sector Analysis")
-                
-                if 'Sector' in analysis_df.columns:
-                    sector_df = analysis_df[analysis_df['Sector'].notna() & (analysis_df['Sector'] != '')].copy()
-                    
-                    if len(sector_df) > 0:
-                        # Returns by sector
-                        sector_stats = sector_df.groupby('Sector').agg({
-                            return_col: ['mean', 'median', 'count', 'std'],
-                        }).round(2)
-                        sector_stats.columns = ['Avg Return', 'Median', 'Count', 'Std Dev']
-                        sector_stats['Win Rate'] = sector_df.groupby('Sector')[return_col].apply(
-                            lambda x: (x > 0).mean() * 100
-                        ).round(1)
-                        
-                        # Add average surprise if available
-                        if 'EPS Surprise (%)' in sector_df.columns:
-                            sector_stats['Avg Surprise'] = sector_df.groupby('Sector')['EPS Surprise (%)'].mean().round(1)
-                        
-                        sector_stats = sector_stats.reset_index().sort_values('Avg Return', ascending=False)
-                        
-                        col1, col2 = st.columns([1.5, 1])
-                        
-                        with col1:
-                            fig = px.bar(
-                                sector_stats,
-                                x='Sector',
-                                y='Avg Return',
-                                color='Avg Return',
-                                color_continuous_scale=['#ef4444', '#fbbf24', '#22c55e'],
-                                title="Average Return by Sector",
-                                text='Avg Return'
-                            )
-                            fig.update_traces(texttemplate='%{text:+.1f}%', textposition='outside')
-                            fig.update_layout(
-                                plot_bgcolor='rgba(0,0,0,0)',
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                font_color='#94a3b8',
-                                height=450,
-                                xaxis_tickangle=-45,
-                                showlegend=False
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        
-                        with col2:
-                            st.markdown("**Sector Performance Table**")
-                            st.dataframe(
-                                sector_stats,
-                                use_container_width=True,
-                                hide_index=True,
-                                height=400,
-                                column_config={
-                                    "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
-                                    "Median": st.column_config.NumberColumn(format="%.2f%%"),
-                                    "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
-                                    "Avg Surprise": st.column_config.NumberColumn(format="%.1f%%"),
-                                }
-                            )
-                        
-                        # Sector + Surprise interaction
-                        if 'EPS Surprise (%)' in analysis_df.columns and 'Surprise Category' in analysis_df.columns:
-                            st.markdown("---")
-                            st.markdown("#### Sector × Earnings Surprise Heatmap")
-                            
-                            heatmap_df = analysis_df[
-                                analysis_df['Sector'].notna() & 
-                                (analysis_df['Surprise Category'] != 'Unknown')
-                            ]
-                            
-                            if len(heatmap_df) > 10:
-                                pivot = heatmap_df.pivot_table(
-                                    values=return_col,
-                                    index='Sector',
-                                    columns='Surprise Category',
-                                    aggfunc='mean'
-                                ).round(2)
-                                
-                                # Reorder columns
-                                col_order = ['Strong Beat (>5%)', 'Beat (0-5%)', 'Miss (0 to -5%)', 'Strong Miss (<-5%)']
-                                pivot = pivot[[c for c in col_order if c in pivot.columns]]
-                                
-                                fig = px.imshow(
-                                    pivot,
-                                    color_continuous_scale='RdYlGn',
-                                    color_continuous_midpoint=0,
-                                    title="Avg Return: Sector × Surprise Category",
-                                    text_auto='.1f'
-                                )
-                                fig.update_layout(
-                                    plot_bgcolor='rgba(0,0,0,0)',
-                                    paper_bgcolor='rgba(0,0,0,0)',
-                                    font_color='#94a3b8',
-                                    height=500
-                                )
-                                st.plotly_chart(fig, use_container_width=True)
-                                
-                                st.caption("Values show average return (%). Green = positive, Red = negative.")
-                    else:
-                        st.warning("No sector data available after filtering.")
-                else:
-                    st.warning("No 'Sector' column found in data.")
-                    
-                    # Fallback: by earnings timing
-                    if 'Earnings Timing' in analysis_df.columns:
-                        st.markdown("#### Returns by Earnings Timing (BMO vs AMC)")
-                        
-                        timing_df = analysis_df[analysis_df['Earnings Timing'].notna()].copy()
-                        
-                        if len(timing_df) > 0:
-                            timing_stats = timing_df.groupby('Earnings Timing').agg({
-                                return_col: ['mean', 'median', 'count'],
-                            }).round(2)
-                            timing_stats.columns = ['Avg Return', 'Median', 'Count']
-                            timing_stats['Win Rate'] = timing_df.groupby('Earnings Timing')[return_col].apply(
-                                lambda x: (x > 0).mean() * 100
-                            ).round(1)
-                            timing_stats = timing_stats.reset_index()
-                            
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                fig = px.bar(
-                                    timing_stats,
-                                    x='Earnings Timing',
-                                    y='Avg Return',
-                                    color='Earnings Timing',
-                                    title="Returns by Earnings Timing"
-                                )
-                                fig.update_layout(
-                                    plot_bgcolor='rgba(0,0,0,0)',
-                                    paper_bgcolor='rgba(0,0,0,0)',
-                                    font_color='#94a3b8',
-                                    height=300,
-                                    showlegend=False
-                                )
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            with col2:
-                                st.dataframe(timing_stats, use_container_width=True, hide_index=True)
-            
-            with analysis_tab4:
                 st.markdown("#### Raw Data Explorer")
                 
                 # Column selector
                 all_cols = list(analysis_df.columns)
-                default_cols = ['Ticker', 'Company Name', 'Sector', 'Earnings Date', 'EPS Estimate', 
+                default_cols = ['Ticker', 'Company Name', 'Earnings Date', 'EPS Estimate', 
                                'Reported EPS', 'EPS Surprise (%)', return_col]
                 default_cols = [c for c in default_cols if c in all_cols]
                 
@@ -1955,19 +1832,12 @@ with tab3:
                     display_data = analysis_df[selected_cols].copy()
                     
                     # Filters
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2 = st.columns(2)
                     
                     with col1:
-                        if 'Sector' in selected_cols and 'Sector' in analysis_df.columns:
-                            sectors = ['All'] + sorted(analysis_df['Sector'].dropna().unique().tolist())
-                            selected_sector = st.selectbox("Filter by Sector:", sectors)
-                            if selected_sector != 'All':
-                                display_data = display_data[display_data['Sector'] == selected_sector]
-                    
-                    with col2:
                         sort_col = st.selectbox("Sort by:", selected_cols, index=0)
                     
-                    with col3:
+                    with col2:
                         sort_order = st.radio("Order:", ["Descending", "Ascending"], horizontal=True)
                     
                     display_data = display_data.sort_values(
@@ -2006,9 +1876,9 @@ with tab3:
                     st.dataframe(summary.round(2), use_container_width=True)
 
 # =============================================================================
-# TAB 4: POWERBI
+# TAB 2: POWERBI
 # =============================================================================
-with tab4:
+with tab2:
     st.markdown("### PowerBI Dashboard")
     
     st.markdown(
