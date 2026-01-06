@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # --- Page Config ---
-st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="", layout="wide")
 
 # --- Clean, Professional CSS ---
 st.markdown("""
@@ -631,14 +631,14 @@ with tab1:
         if not rows:
             st.warning("No tickers match all criteria.")
         else:
-            st.success(f"✅ {len(rows)} tickers ready to trade")
+            st.success(f"{len(rows)} tickers ready to trade")
             st.dataframe(
                 pd.DataFrame(rows)[["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap", "Date Check"]],
                 use_container_width=True, hide_index=True
             )
         
         if skipped:
-            with st.expander(f"⚠️ {len(skipped)} tickers skipped (earnings already passed)"):
+            with st.expander(f"{len(skipped)} tickers skipped (earnings already passed)"):
                 st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
     else:
         st.caption("Click Find Stocks to scan.")
@@ -682,7 +682,7 @@ with tab3:
     
     if has_hourly or has_returns:
         # Data summary
-        st.markdown("### 📊 Data Summary")
+        st.markdown("###  Data Summary")
         col1, col2, col3 = st.columns(3)
         
         if has_hourly:
@@ -698,7 +698,7 @@ with tab3:
         if earnings_df is not None and 'Date Check' in earnings_df.columns:
             date_passed_count = len(earnings_df[earnings_df['Date Check'] == 'DATE PASSED'])
             if date_passed_count > 0:
-                st.caption(f"ℹ️ Filtered out {date_passed_count} tickers with incorrect earnings dates (DATE PASSED)")
+                st.caption(f"Filtered out {date_passed_count} tickers with incorrect earnings dates (DATE PASSED)")
         
         st.markdown("---")
         
@@ -721,7 +721,7 @@ with tab3:
             st.metric("Strategy", f"Stop: {stop_loss*100:.0f}%" if stop_loss else "No Stop", f"Exit: Day {max_days}")
         
         # Run backtest button
-        if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
+        if st.button("Run Backtest", type="primary", use_container_width=True):
             
             with st.spinner("Running backtest on hourly data..."):
                 # Detailed backtest function that captures hourly stop times
@@ -880,7 +880,7 @@ with tab3:
             max_days = st.session_state['max_days']
             
             st.markdown("---")
-            st.markdown("### 📈 Backtest Results")
+            st.markdown("###  Backtest Results")
             
             # Key Metrics
             total_return = results['Backtest Return'].sum() * 100
@@ -940,7 +940,7 @@ with tab3:
             
             # Strategy vs Buy & Hold comparison
             if avg_5d_return is not None:
-                st.markdown("### 🔄 Strategy vs Buy & Hold (5D)")
+                st.markdown("### Strategy vs Buy & Hold (5D)")
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -961,14 +961,14 @@ with tab3:
                     st.metric("Avg Diff", f"{avg_diff:+.2f}%", delta_color="normal")
                 
                 if diff_total > 0:
-                    st.success(f"✅ Stop loss strategy **outperformed** buy & hold by {diff_total:+.1f}%")
+                    st.success(f"Stop loss strategy **outperformed** buy & hold by {diff_total:+.1f}%")
                 else:
-                    st.warning(f"⚠️ Stop loss strategy **underperformed** buy & hold by {diff_total:.1f}%")
+                    st.warning(f"Stop loss strategy **underperformed** buy & hold by {diff_total:.1f}%")
             
             st.markdown("---")
             
             # Exit Breakdown
-            st.markdown("### 🚪 Exit Breakdown")
+            st.markdown("### Exit Breakdown")
             
             # Count different exit types
             gap_down_count = results['Gap Down'].sum() if 'Gap Down' in results.columns else 0
@@ -986,7 +986,7 @@ with tab3:
                     <div class="exit-count">{gap_down_count}</div>
                     <div class="exit-pct">({gap_down_count/n_trades*100:.1f}% of trades)</div>
                     <div class="exit-return" style="color: #ef4444;">{gap_avg:+.2f}% avg</div>
-                    <div class="exit-label">📉 Gap Down (opened below stop)</div>
+                    <div class="exit-label">Gap Down (opened below stop)</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -1000,7 +1000,7 @@ with tab3:
                     <div class="exit-count">{stop_loss_count}</div>
                     <div class="exit-pct">({stop_loss_count/n_trades*100:.1f}% of trades)</div>
                     <div class="exit-return" style="color: #f59e0b;">{stop_avg:+.2f}% avg</div>
-                    <div class="exit-label">🛑 Stop Loss Hit</div>
+                    <div class="exit-label">Stop Loss Hit</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -1013,7 +1013,7 @@ with tab3:
                     <div class="exit-count">{held_count}</div>
                     <div class="exit-pct">({held_count/n_trades*100:.1f}% of trades)</div>
                     <div class="exit-return" style="color: #22c55e;">{held_avg:+.2f}% avg</div>
-                    <div class="exit-label">✅ Held to Day {max_days}</div>
+                    <div class="exit-label">Held to Day {max_days}</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -1047,7 +1047,7 @@ with tab3:
             st.markdown("---")
             
             # Charts
-            st.markdown("### 📊 Performance Charts")
+            st.markdown("###  Performance Charts")
             
             chart_tab1, chart_tab2, chart_tab3 = st.tabs(["Cumulative Returns", "Return Distribution", "Stop Loss Timing"])
             
@@ -1213,7 +1213,7 @@ with tab3:
             st.markdown("---")
             
             # Full Trade List
-            st.markdown("### 📋 All Trades")
+            st.markdown("###  All Trades")
             
             display_df = results.copy()
             display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
@@ -1248,7 +1248,7 @@ with tab3:
             # Download button
             csv = results.to_csv(index=False)
             st.download_button(
-                label="📥 Download Results CSV",
+                label="Download Results CSV",
                 data=csv,
                 file_name=f"backtest_results_stop{int(stop_loss*100) if stop_loss else 'none'}_day{max_days}.csv",
                 mime="text/csv"
@@ -1257,7 +1257,7 @@ with tab3:
             st.markdown("---")
             
             # Stop Loss Comparison Tool
-            st.markdown("### 🔬 Compare Stop Loss Levels")
+            st.markdown("### Compare Stop Loss Levels")
             
             if st.button("Run Full Comparison", use_container_width=True):
                 stop_levels = [None, -0.02, -0.03, -0.04, -0.05, -0.06, -0.08, -0.10, -0.15]
@@ -1378,7 +1378,7 @@ with tab3:
 # TAB 4: EARNINGS ANALYSIS
 # =============================================================================
 with tab4:
-    st.subheader("📊 Earnings Surprise Analysis")
+    st.subheader(" Earnings Surprise Analysis")
     st.markdown("Analyze how earnings beats/misses and surprise magnitude affect stock returns")
     
     # Load data
@@ -1400,9 +1400,9 @@ with tab4:
             returns_df = returns_df[returns_df['Date Check'] == 'OK']
             filtered_count = original_count - len(returns_df)
             if filtered_count > 0:
-                st.caption(f"ℹ️ Filtered out {filtered_count} trades with incorrect earnings dates (Date Check ≠ OK)")
+                st.caption(f"Filtered out {filtered_count} trades with incorrect earnings dates (Date Check ≠ OK)")
         
-        st.success(f"✅ Loaded {len(returns_df)} trades from returns tracker")
+        st.success(f"Loaded {len(returns_df)} trades from returns tracker")
         
         # Clean up the data
         analysis_df = returns_df.copy()
@@ -1558,9 +1558,9 @@ with tab4:
                                 """)
                                 
                                 if diff > 0:
-                                    st.success("✅ Beats outperform misses")
+                                    st.success("Beats outperform misses")
                                 else:
-                                    st.warning("⚠️ Misses outperform beats (unusual)")
+                                    st.warning("Misses outperform beats (unusual)")
                         
                         # Additional: Simple Beat vs Miss
                         st.markdown("---")
@@ -1622,17 +1622,27 @@ with tab4:
                 st.markdown("#### Surprise Magnitude vs Returns")
                 
                 if 'EPS Surprise (%)' in analysis_df.columns:
-                    # Filter to valid data
+                    # Filter to valid data AND limit to -100% to 100% range for meaningful analysis
                     scatter_df = analysis_df[
                         analysis_df['EPS Surprise (%)'].notna() & 
-                        analysis_df[return_col].notna()
+                        analysis_df[return_col].notna() &
+                        (analysis_df['EPS Surprise (%)'] >= -100) &
+                        (analysis_df['EPS Surprise (%)'] <= 100)
                     ].copy()
+                    
+                    # Count outliers excluded
+                    outliers = analysis_df[
+                        analysis_df['EPS Surprise (%)'].notna() & 
+                        ((analysis_df['EPS Surprise (%)'] < -100) | (analysis_df['EPS Surprise (%)'] > 100))
+                    ]
+                    if len(outliers) > 0:
+                        st.caption(f"Note: {len(outliers)} outliers with EPS Surprise outside -100% to 100% range excluded from chart")
                     
                     if len(scatter_df) > 5:
                         col1, col2 = st.columns([2, 1])
                         
                         with col1:
-                            # Scatter plot without trendline (removed to avoid statsmodels dependency)
+                            # Scatter plot without trendline
                             fig = px.scatter(
                                 scatter_df,
                                 x='EPS Surprise (%)',
@@ -1647,7 +1657,8 @@ with tab4:
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 font_color='#94a3b8',
-                                height=500
+                                height=500,
+                                xaxis=dict(range=[-100, 100], title='EPS Surprise (%)'),
                             )
                             fig.add_hline(y=0, line_dash="dash", line_color="#475569")
                             fig.add_vline(x=0, line_dash="dash", line_color="#475569")
@@ -1695,39 +1706,11 @@ with tab4:
                             """)
                             
                             if abs(t_stat) > 1.96:
-                                st.success("✅ Statistically significant (|t| > 1.96)")
+                                st.success("Statistically significant (|t| > 1.96)")
                             elif abs(t_stat) > 1.65:
-                                st.info("ℹ️ Marginally significant")
+                                st.info("Marginally significant")
                             else:
-                                st.warning("⚠️ Not significant")
-                            
-                            st.markdown("---")
-                            
-                            # Quintile analysis
-                            st.markdown("**Returns by Surprise Quintile**")
-                            try:
-                                scatter_df['Surprise Quintile'] = pd.qcut(
-                                    scatter_df['EPS Surprise (%)'], 
-                                    q=5, 
-                                    labels=['Q1 (Worst)', 'Q2', 'Q3', 'Q4', 'Q5 (Best)'],
-                                    duplicates='drop'
-                                )
-                                
-                                quintile_stats = scatter_df.groupby('Surprise Quintile', observed=True)[return_col].agg(
-                                    ['sum', 'mean', 'count']
-                                ).round(2)
-                                quintile_stats.columns = ['Total', 'Avg', 'Count']
-                                
-                                st.dataframe(
-                                    quintile_stats,
-                                    use_container_width=True,
-                                    column_config={
-                                        "Total": st.column_config.NumberColumn(format="%.1f%%"),
-                                        "Avg": st.column_config.NumberColumn(format="%.2f%%"),
-                                    }
-                                )
-                            except Exception as e:
-                                st.caption(f"Could not create quintiles: {e}")
+                                st.warning("Not significant")
                         
                         # Surprise buckets analysis
                         st.markdown("---")
@@ -1857,7 +1840,7 @@ with tab4:
                     # Download
                     csv = display_data.to_csv(index=False)
                     st.download_button(
-                        label="📥 Download Filtered Data",
+                        label="Download Filtered Data",
                         data=csv,
                         file_name="earnings_analysis_data.csv",
                         mime="text/csv"
