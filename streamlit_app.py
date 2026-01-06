@@ -1157,8 +1157,8 @@ with tab3:
                         day_counts.columns = ['Day', 'Count']
                         
                         fig = px.bar(day_counts, x='Day', y='Count', 
-                                    title='Stop Loss Triggers by Trading Day',
-                                    color='Count', color_continuous_scale='Reds')
+                                    title='Stop Loss Triggers by Trading Day')
+                        fig.update_traces(marker_color='#3b82f6')
                         fig.update_layout(
                             plot_bgcolor='rgba(0,0,0,0)',
                             paper_bgcolor='rgba(0,0,0,0)',
@@ -1175,8 +1175,8 @@ with tab3:
                             hour_counts.columns = ['Hour', 'Count']
                             
                             fig = px.bar(hour_counts, x='Hour', y='Count',
-                                        title='Stop Loss Triggers by Hour',
-                                        color='Count', color_continuous_scale='Reds')
+                                        title='Stop Loss Triggers by Hour')
+                            fig.update_traces(marker_color='#3b82f6')
                             fig.update_layout(
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 paper_bgcolor='rgba(0,0,0,0)',
@@ -1347,6 +1347,12 @@ with tab3:
                         text=comp_df['Total Return'].apply(lambda x: f"{x:+.1f}%"),
                         textposition='outside'
                     ))
+                    
+                    # Calculate y-axis range to fit labels
+                    y_min = comp_df['Total Return'].min()
+                    y_max = comp_df['Total Return'].max()
+                    y_padding = (y_max - y_min) * 0.15 if y_max != y_min else 10
+                    
                     fig.update_layout(
                         title="Total Return by Stop Loss Level",
                         xaxis_title="Stop Loss",
@@ -1355,7 +1361,9 @@ with tab3:
                         paper_bgcolor='rgba(0,0,0,0)',
                         font_color='#94a3b8',
                         height=400,
-                        xaxis=dict(type='category')  # Force categorical x-axis
+                        xaxis=dict(type='category'),
+                        yaxis=dict(range=[min(y_min - y_padding, y_min * 1.1 if y_min < 0 else 0), y_max + y_padding]),
+                        margin=dict(t=50, b=50)
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 
@@ -1400,9 +1408,7 @@ with tab4:
             returns_df = returns_df[returns_df['Date Check'] == 'OK']
             filtered_count = original_count - len(returns_df)
             if filtered_count > 0:
-                st.caption(f"Filtered out {filtered_count} trades with incorrect earnings dates (Date Check ≠ OK)")
-        
-        st.success(f"Loaded {len(returns_df)} trades from returns tracker")
+                st.caption(f"Filtered out {filtered_count} trades with incorrect earnings dates (Date Check != OK)")
         
         # Clean up the data
         analysis_df = returns_df.copy()
@@ -1424,13 +1430,18 @@ with tab4:
             # Convert returns to percentage for display
             analysis_df[return_col] = pd.to_numeric(analysis_df[return_col], errors='coerce') * 100
             
+            # Count trades with and without EPS Surprise data
+            total_trades = len(analysis_df)
+            valid_surprise = analysis_df['EPS Surprise (%)'].notna().sum() if 'EPS Surprise (%)' in analysis_df.columns else 0
+            missing_surprise = total_trades - valid_surprise
+            avg_surprise = analysis_df['EPS Surprise (%)'].mean() if 'EPS Surprise (%)' in analysis_df.columns else 0
+            
+            st.success(f"Loaded {total_trades} trades ({valid_surprise} with EPS Surprise data, {missing_surprise} blank)")
+            
             st.markdown("---")
             
             # Quick Stats
             col1, col2, col3, col4 = st.columns(4)
-            
-            valid_surprise = analysis_df['EPS Surprise (%)'].notna().sum() if 'EPS Surprise (%)' in analysis_df.columns else 0
-            avg_surprise = analysis_df['EPS Surprise (%)'].mean() if 'EPS Surprise (%)' in analysis_df.columns else 0
             
             with col1:
                 st.metric("Total Trades", len(analysis_df))
@@ -1494,22 +1505,18 @@ with tab4:
                             # Bar chart
                             fig = go.Figure()
                             
-                            colors = {
-                                'Strong Beat (>5%)': '#22c55e',
-                                'Beat (0-5%)': '#86efac',
-                                'Miss (0 to -5%)': '#fca5a5',
-                                'Strong Miss (<-5%)': '#ef4444',
-                            }
-                            
-                            bar_colors = [colors.get(cat, '#3b82f6') for cat in category_stats['Surprise Category']]
-                            
                             fig.add_trace(go.Bar(
                                 x=category_stats['Surprise Category'],
                                 y=category_stats['Avg Return'],
-                                marker_color=bar_colors,
+                                marker_color='#3b82f6',
                                 text=category_stats['Avg Return'].apply(lambda x: f"{x:+.2f}%"),
                                 textposition='outside'
                             ))
+                            
+                            # Calculate y-axis range to fit labels
+                            y_min = category_stats['Avg Return'].min()
+                            y_max = category_stats['Avg Return'].max()
+                            y_padding = (y_max - y_min) * 0.2 if y_max != y_min else 5
                             
                             fig.update_layout(
                                 title="Average Return by Earnings Surprise Category",
@@ -1518,7 +1525,9 @@ with tab4:
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 font_color='#94a3b8',
-                                height=400
+                                height=400,
+                                yaxis=dict(range=[min(y_min - y_padding, -2), max(y_max + y_padding, 2)]),
+                                margin=dict(t=50, b=50)
                             )
                             fig.add_hline(y=0, line_dash="dash", line_color="#475569")
                             st.plotly_chart(fig, use_container_width=True)
@@ -1641,24 +1650,61 @@ with tab4:
                     if len(scatter_df) > 5:
                         col1, col2 = st.columns([2, 1])
                         
+                        # Calculate regression for trendline
+                        x = scatter_df['EPS Surprise (%)'].values
+                        y = scatter_df[return_col].values
+                        n = len(x)
+                        x_mean, y_mean = np.mean(x), np.mean(y)
+                        slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
+                        intercept = y_mean - slope * x_mean
+                        
+                        # R-squared
+                        y_pred = slope * x + intercept
+                        ss_res = np.sum((y - y_pred) ** 2)
+                        ss_tot = np.sum((y - y_mean) ** 2)
+                        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+                        
+                        # T-stat
+                        se = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
+                        se_slope = se / np.sqrt(np.sum((x - x_mean) ** 2)) if np.sum((x - x_mean) ** 2) > 0 else 0
+                        t_stat = slope / se_slope if se_slope > 0 else 0
+                        
                         with col1:
-                            # Scatter plot without trendline
-                            fig = px.scatter(
-                                scatter_df,
-                                x='EPS Surprise (%)',
-                                y=return_col,
-                                hover_data=['Ticker', 'Company Name'] if 'Company Name' in scatter_df.columns else ['Ticker'],
-                                title="EPS Surprise % vs Stock Return",
-                                color='Sector' if 'Sector' in scatter_df.columns else None
-                            )
+                            # Scatter plot with trendline (no sector colors)
+                            fig = go.Figure()
                             
-                            fig.update_traces(marker=dict(size=10, opacity=0.7))
+                            # Add scatter points
+                            fig.add_trace(go.Scatter(
+                                x=scatter_df['EPS Surprise (%)'],
+                                y=scatter_df[return_col],
+                                mode='markers',
+                                marker=dict(size=10, opacity=0.7, color='#3b82f6'),
+                                text=scatter_df['Ticker'],
+                                hovertemplate='<b>%{text}</b><br>EPS Surprise: %{x:.1f}%<br>Return: %{y:.1f}%<extra></extra>',
+                                name='Trades'
+                            ))
+                            
+                            # Add trendline
+                            x_line = np.array([-100, 100])
+                            y_line = slope * x_line + intercept
+                            fig.add_trace(go.Scatter(
+                                x=x_line,
+                                y=y_line,
+                                mode='lines',
+                                line=dict(color='#f59e0b', width=2, dash='solid'),
+                                name=f'Trend (R²={r_squared:.3f})'
+                            ))
+                            
                             fig.update_layout(
+                                title="EPS Surprise % vs Stock Return",
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 font_color='#94a3b8',
                                 height=500,
                                 xaxis=dict(range=[-100, 100], title='EPS Surprise (%)'),
+                                yaxis=dict(title=f'{return_col} (%)'),
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                             )
                             fig.add_hline(y=0, line_dash="dash", line_color="#475569")
                             fig.add_vline(x=0, line_dash="dash", line_color="#475569")
@@ -1676,27 +1722,6 @@ with tab4:
                             """, unsafe_allow_html=True)
                             
                             st.markdown("")
-                            
-                            # Calculate regression stats using numpy
-                            x = scatter_df['EPS Surprise (%)'].values
-                            y = scatter_df[return_col].values
-                            
-                            # Linear regression using numpy
-                            n = len(x)
-                            x_mean, y_mean = np.mean(x), np.mean(y)
-                            slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
-                            intercept = y_mean - slope * x_mean
-                            
-                            # R-squared
-                            y_pred = slope * x + intercept
-                            ss_res = np.sum((y - y_pred) ** 2)
-                            ss_tot = np.sum((y - y_mean) ** 2)
-                            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-                            
-                            # Calculate t-statistic and p-value for slope
-                            se = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
-                            se_slope = se / np.sqrt(np.sum((x - x_mean) ** 2)) if np.sum((x - x_mean) ** 2) > 0 else 0
-                            t_stat = slope / se_slope if se_slope > 0 else 0
                             
                             st.markdown(f"""
                             **Regression Stats:**
@@ -1757,15 +1782,19 @@ with tab4:
                         
                         with col1:
                             fig = go.Figure()
-                            colors = ['#ef4444', '#f97316', '#fbbf24', '#a3e635', '#22c55e', '#10b981', '#059669']
                             
                             fig.add_trace(go.Bar(
                                 x=bucket_stats['Surprise Bucket'],
                                 y=bucket_stats['Avg Return'],
-                                marker_color=colors[:len(bucket_stats)],
+                                marker_color='#3b82f6',
                                 text=bucket_stats['Avg Return'].apply(lambda x: f"{x:+.2f}%"),
                                 textposition='outside'
                             ))
+                            
+                            # Calculate y-axis range to fit labels
+                            y_min = bucket_stats['Avg Return'].min()
+                            y_max = bucket_stats['Avg Return'].max()
+                            y_padding = (y_max - y_min) * 0.2 if y_max != y_min else 5
                             
                             fig.update_layout(
                                 title="Average Return by EPS Surprise Bucket",
@@ -1774,7 +1803,9 @@ with tab4:
                                 plot_bgcolor='rgba(0,0,0,0)',
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 font_color='#94a3b8',
-                                height=400
+                                height=400,
+                                yaxis=dict(range=[min(y_min - y_padding, -2), max(y_max + y_padding, 2)]),
+                                margin=dict(t=50, b=50)
                             )
                             fig.add_hline(y=0, line_dash="dash", line_color="#475569")
                             st.plotly_chart(fig, use_container_width=True)
