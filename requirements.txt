@@ -8,3 +8,4 @@ yfinance==0.2.36
 scipy==1.11.4
 statsmodels==0.14.1
 anthropic
+google-generativeai
