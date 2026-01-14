@@ -360,7 +360,7 @@ def query_gemini(user_query, data_context, additional_analysis, api_key):
     try:
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         system_prompt = """You are an expert financial analyst assistant for an Earnings Momentum Trading Strategy application. 
 
