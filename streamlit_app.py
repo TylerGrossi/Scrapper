@@ -799,7 +799,7 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
 
 st.title("📈 Earnings Momentum Strategy")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis", "🤖 AI Assistant"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis", "Data Analyst"])
 
 # =============================================================================
 # TAB 1: STOCK SCREENER
@@ -2160,11 +2160,11 @@ with tab4:
                     summary = analysis_df[key_cols].describe().T
                     st.dataframe(summary.round(2), use_container_width=True)
 # =============================================================================
-# TAB 5: AI ASSISTANT
+# TAB 5: DATA ANALYST
 # =============================================================================
 with tab5:
     # API Key from Streamlit secrets
-    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
     
     # Load all data for AI context
     ai_returns_df = load_returns_data()
@@ -2222,8 +2222,8 @@ with tab5:
     """, unsafe_allow_html=True)
     
     # Check if API key is configured
-    if not ANTHROPIC_API_KEY:
-        st.warning("API key not configured. Please add ANTHROPIC_API_KEY to Streamlit secrets.")
+    if not GEMINI_API_KEY:
+        st.warning("API key not configured. Please add GEMINI_API_KEY to Streamlit secrets.")
     else:
         # Display chat history
         chat_display = st.container()
@@ -2247,7 +2247,7 @@ with tab5:
                     else:
                         st.markdown(f"""
                         <div class="message-assistant">
-                            <div class="message-label">Assistant</div>
+                            <div class="message-label">Analyst</div>
                             <div class="message-content">{message['content']}</div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -2298,12 +2298,12 @@ with tab5:
                         ai_earnings_df
                     )
                     
-                    # Query Claude
-                    response = query_claude(
+                    # Query Gemini
+                    response = query_gemini(
                         user_question,
                         data_context,
                         additional_analysis,
-                        ANTHROPIC_API_KEY
+                        GEMINI_API_KEY
                     )
                     
                     # Add assistant response to history
