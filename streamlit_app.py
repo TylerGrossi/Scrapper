@@ -2159,234 +2159,163 @@ with tab4:
                 if key_cols:
                     summary = analysis_df[key_cols].describe().T
                     st.dataframe(summary.round(2), use_container_width=True)
-
 # =============================================================================
 # TAB 5: AI ASSISTANT
 # =============================================================================
 with tab5:
-    st.subheader("🤖 AI Assistant")
-    st.markdown("Ask questions about your earnings data and get AI-powered insights")
+    # API Key from Streamlit secrets
+    ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "")
     
     # Load all data for AI context
     ai_returns_df = load_returns_data()
     ai_hourly_df = load_hourly_prices()
     ai_earnings_df = load_earnings_universe()
     
-    # API Key input
-    st.markdown("### 🔑 API Configuration")
-    
-    # Check for API key in session state or environment
-    api_key = None
-    
-    # Try to get from environment first
-    import os
-    env_api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        api_key_input = st.text_input(
-            "Anthropic API Key",
-            type="password",
-            value=env_api_key,
-            help="Enter your Anthropic API key. Get one at https://console.anthropic.com/",
-            placeholder="sk-ant-..."
-        )
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if api_key_input:
-            st.success("✅ Key provided")
-        else:
-            st.warning("⚠️ No key")
-    
-    if api_key_input:
-        api_key = api_key_input
-    
-    st.markdown("---")
-    
-    # Data status
-    st.markdown("### 📊 Data Status")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if ai_returns_df is not None and not ai_returns_df.empty:
-            st.success(f"✅ Returns Data: {len(ai_returns_df)} trades")
-        else:
-            st.error("❌ Returns Data: Not loaded")
-    
-    with col2:
-        if ai_hourly_df is not None and not ai_hourly_df.empty:
-            unique_trades = ai_hourly_df.groupby(['Ticker', 'Earnings Date']).ngroups
-            st.success(f"✅ Hourly Data: {unique_trades} trades")
-        else:
-            st.warning("⚠️ Hourly Data: Not loaded")
-    
-    with col3:
-        if ai_earnings_df is not None and not ai_earnings_df.empty:
-            st.success(f"✅ Universe: {len(ai_earnings_df)} stocks")
-        else:
-            st.warning("⚠️ Universe: Not loaded")
-    
-    st.markdown("---")
-    
     # Initialize chat history in session state
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
     
-    # Example questions
-    st.markdown("### 💡 Example Questions")
-    example_questions = [
-        "What is the average 5-day return for stocks that beat earnings expectations?",
-        "Which sector has the best performance after earnings?",
-        "What's the win rate for stocks with EPS surprise greater than 10%?",
-        "Show me the top 5 best performing stocks",
-        "What's the correlation between EPS surprise and stock returns?",
-        "How do stocks that miss earnings perform compared to beats?",
-        "What is the total return if I traded all stocks in the dataset?",
-        "Which stocks had the worst returns after earnings?"
-    ]
+    # Chat container with custom styling
+    st.markdown("""
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .message-user {
+            background: #1e3a5f;
+            border-radius: 12px 12px 4px 12px;
+            padding: 12px 16px;
+            margin: 8px 0;
+            margin-left: 20%;
+            color: #f1f5f9;
+        }
+        .message-assistant {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px 12px 12px 4px;
+            padding: 12px 16px;
+            margin: 8px 0;
+            margin-right: 20%;
+            color: #e2e8f0;
+        }
+        .message-label {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .message-content {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .chat-input-container {
+            position: sticky;
+            bottom: 0;
+            background: #0f172a;
+            padding: 16px 0;
+            border-top: 1px solid #334155;
+        }
+    </style>
+    """, unsafe_allow_html=True)
     
-    # Display example questions as clickable buttons
-    cols = st.columns(2)
-    for i, question in enumerate(example_questions):
-        col_idx = i % 2
-        with cols[col_idx]:
-            if st.button(f"📌 {question[:50]}...", key=f"example_{i}", use_container_width=True):
-                st.session_state.pending_question = question
-    
-    st.markdown("---")
-    
-    # Chat interface
-    st.markdown("### 💬 Chat")
-    
-    # Display chat history
-    chat_container = st.container()
-    with chat_container:
-        for message in st.session_state.chat_history:
-            if message['role'] == 'user':
-                st.markdown(f"""
-                <div class="chat-message user-message">
-                    <strong>🧑 You:</strong><br>{message['content']}
+    # Check if API key is configured
+    if not ANTHROPIC_API_KEY:
+        st.warning("API key not configured. Please add ANTHROPIC_API_KEY to Streamlit secrets.")
+    else:
+        # Display chat history
+        chat_display = st.container()
+        with chat_display:
+            if not st.session_state.chat_history:
+                st.markdown("""
+                <div style="text-align: center; color: #64748b; padding: 60px 20px;">
+                    <div style="font-size: 1.1rem; margin-bottom: 8px;">Ask me anything about your earnings data</div>
+                    <div style="font-size: 0.85rem;">I can analyze returns, compare sectors, calculate win rates, and more</div>
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.markdown(f"""
-                <div class="chat-message assistant-message">
-                    <strong>🤖 AI Assistant:</strong><br>{message['content']}
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Input area
-    st.markdown("---")
-    
-    # Check if there's a pending question from example buttons
-    default_question = ""
-    if 'pending_question' in st.session_state:
-        default_question = st.session_state.pending_question
-        del st.session_state.pending_question
-    
-    user_question = st.text_area(
-        "Ask a question about your earnings data:",
-        value=default_question,
-        height=100,
-        placeholder="e.g., What is the average 5-day return for healthcare stocks that beat earnings?",
-        key="user_question_input"
-    )
-    
-    col1, col2, col3 = st.columns([1, 1, 2])
-    
-    with col1:
-        send_button = st.button("🚀 Send Question", type="primary", use_container_width=True)
-    
-    with col2:
-        clear_button = st.button("🗑️ Clear Chat", use_container_width=True)
-    
-    if clear_button:
-        st.session_state.chat_history = []
-        st.rerun()
-    
-    # Process question
-    if send_button and user_question:
-        if not api_key:
-            st.error("⚠️ Please enter your Anthropic API key above to use the AI Assistant.")
-        elif ai_returns_df is None or ai_returns_df.empty:
-            st.error("⚠️ No data available. Please ensure the data files are accessible.")
-        else:
-            # Add user message to history
-            st.session_state.chat_history.append({
-                'role': 'user',
-                'content': user_question
-            })
-            
-            with st.spinner("🤔 Thinking..."):
-                # Get data context
-                data_context = get_data_context(ai_returns_df, ai_hourly_df, ai_earnings_df)
-                
-                # Pre-analyze based on query
-                additional_analysis = analyze_data_for_query(
-                    user_question, 
-                    ai_returns_df, 
-                    ai_hourly_df, 
-                    ai_earnings_df
-                )
-                
-                # Query Claude
-                response = query_claude(
-                    user_question,
-                    data_context,
-                    additional_analysis,
-                    api_key
-                )
-                
-                # Add assistant response to history
+                for message in st.session_state.chat_history:
+                    if message['role'] == 'user':
+                        st.markdown(f"""
+                        <div class="message-user">
+                            <div class="message-label">You</div>
+                            <div class="message-content">{message['content']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="message-assistant">
+                            <div class="message-label">Assistant</div>
+                            <div class="message-content">{message['content']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        # Spacer
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Input area
+        col1, col2 = st.columns([6, 1])
+        
+        with col1:
+            user_question = st.text_input(
+                "Message",
+                placeholder="Ask a question...",
+                key="user_question_input",
+                label_visibility="collapsed"
+            )
+        
+        with col2:
+            send_button = st.button("Send", type="primary", use_container_width=True)
+        
+        # Clear chat button (smaller, secondary)
+        if st.session_state.chat_history:
+            if st.button("Clear conversation", type="secondary"):
+                st.session_state.chat_history = []
+                st.rerun()
+        
+        # Process question
+        if send_button and user_question:
+            if ai_returns_df is None or ai_returns_df.empty:
+                st.error("No data available. Please ensure the data files are accessible.")
+            else:
+                # Add user message to history
                 st.session_state.chat_history.append({
-                    'role': 'assistant',
-                    'content': response
+                    'role': 'user',
+                    'content': user_question
                 })
-            
-            # Rerun to update chat display
-            st.rerun()
-    
-    # Additional info
-    st.markdown("---")
-    st.markdown("### ℹ️ About the AI Assistant")
-    
-    with st.expander("How it works"):
-        st.markdown("""
-        The AI Assistant uses Claude (by Anthropic) to analyze your earnings data and answer questions.
-        
-        **What it can do:**
-        - Calculate statistics (averages, win rates, totals) across your data
-        - Compare performance by sector, EPS surprise, or other factors
-        - Identify best and worst performing stocks
-        - Explain patterns and provide insights
-        - Answer complex analytical questions
-        
-        **Data available to the AI:**
-        - Returns Tracker: Historical trades with 1D, 3D, 5D, 7D, 10D returns
-        - Hourly Prices: Intraday price movements (if loaded)
-        - Earnings Universe: Full list of tracked stocks
-        
-        **Tips for better answers:**
-        - Be specific in your questions
-        - Mention the time period you're interested in (e.g., "5-day return")
-        - Specify filters if needed (e.g., "healthcare sector", "EPS beat > 5%")
-        """)
-    
-    with st.expander("Get an API Key"):
-        st.markdown("""
-        To use the AI Assistant, you need an Anthropic API key:
-        
-        1. Go to [console.anthropic.com](https://console.anthropic.com/)
-        2. Sign up or log in
-        3. Navigate to "API Keys"
-        4. Create a new key
-        5. Copy and paste it above
-        
-        **Note:** API usage is billed by Anthropic based on tokens used. Each question typically costs a few cents.
-        """)
+                
+                with st.spinner(""):
+                    # Get data context
+                    data_context = get_data_context(ai_returns_df, ai_hourly_df, ai_earnings_df)
+                    
+                    # Pre-analyze based on query
+                    additional_analysis = analyze_data_for_query(
+                        user_question, 
+                        ai_returns_df, 
+                        ai_hourly_df, 
+                        ai_earnings_df
+                    )
+                    
+                    # Query Claude
+                    response = query_claude(
+                        user_question,
+                        data_context,
+                        additional_analysis,
+                        ANTHROPIC_API_KEY
+                    )
+                    
+                    # Add assistant response to history
+                    st.session_state.chat_history.append({
+                        'role': 'assistant',
+                        'content': response
+                    })
+                
+                st.rerun()
 
 # =============================================================================
 # FOOTER
 # =============================================================================
 st.markdown("---")
-st.caption("📈 Earnings Momentum Strategy | Built with Streamlit")
+st.caption("Earnings Momentum Strategy")
