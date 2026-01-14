@@ -8,7 +8,7 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import anthropic
+import google.generativeai as genai
 import json
 
 # --- Page Config ---
@@ -197,8 +197,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# AI CHATBOT HELPER FUNCTIONS
+# AI CHATBOT HELPER FUNCTIONS (Using Google Gemini)
 # =============================================================================
+
+import google.generativeai as genai
 
 def get_data_context(returns_df, hourly_df, earnings_df):
     """
@@ -351,14 +353,17 @@ def analyze_data_for_query(query, returns_df, hourly_df, earnings_df):
     return "\n".join(analysis_results) if analysis_results else ""
 
 
-def query_claude(user_query, data_context, additional_analysis, api_key):
+def query_gemini(user_query, data_context, additional_analysis, api_key):
     """
-    Send query to Claude API with data context and get response.
+    Send query to Google Gemini API with data context and get response.
     """
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    system_prompt = """You are an expert financial analyst assistant for an Earnings Momentum Trading Strategy application. 
-    
+    try:
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        system_prompt = """You are an expert financial analyst assistant for an Earnings Momentum Trading Strategy application. 
+
 Your role is to help users analyze their trading data and answer questions about:
 - Stock performance after earnings announcements
 - EPS surprises and their impact on returns
@@ -366,22 +371,20 @@ Your role is to help users analyze their trading data and answer questions about
 - Win rates, average returns, and other trading metrics
 - Backtesting results and strategy optimization
 
-You have access to the following data:
-1. Returns Tracker: Historical trades with returns at various time periods (1D, 3D, 5D, 7D, 10D)
-2. Hourly Prices: Intraday price movements for detailed analysis
-3. Earnings Universe: The full list of stocks being tracked
-
 When answering questions:
 - Be specific and use actual numbers from the data
 - If asked about calculations, show your work
 - Provide actionable insights when possible
 - If data is insufficient to answer a question, say so clearly
 - Format numbers appropriately (percentages with %, currency with $)
+- Be concise and direct
 
 IMPORTANT: All return values in the raw data are in DECIMAL format (e.g., 0.05 = 5%). 
 Convert to percentages when presenting to the user."""
 
-    user_message = f"""Based on the following data context and analysis, please answer this question:
+        full_prompt = f"""{system_prompt}
+
+Based on the following data context and analysis, please answer this question:
 
 QUESTION: {user_query}
 
@@ -391,23 +394,13 @@ QUESTION: {user_query}
 === PRE-COMPUTED ANALYSIS ===
 {additional_analysis}
 
-Please provide a clear, data-driven answer. If you need to perform calculations, show your work."""
+Please provide a clear, data-driven answer."""
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
-        )
-        return response.content[0].text
-    except anthropic.APIError as e:
-        return f"API Error: {str(e)}"
+        response = model.generate_content(full_prompt)
+        return response.text
+        
     except Exception as e:
         return f"Error: {str(e)}"
-
 
 # =============================================================================
 # HELPER FUNCTIONS (Original)
