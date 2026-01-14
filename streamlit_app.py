@@ -8,11 +8,9 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import google.generativeai as genai
-import json
 
 # --- Page Config ---
-st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Earnings Momentum Strategy", page_icon="", layout="wide")
 
 # --- Clean, Professional CSS ---
 st.markdown("""
@@ -178,232 +176,11 @@ st.markdown("""
     .best-row {
         background: rgba(34, 197, 94, 0.1) !important;
     }
-    
-    /* Chat styling */
-    .chat-message {
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 0.5rem;
-    }
-    .user-message {
-        background: #1e3a5f;
-        border: 1px solid #3b82f6;
-    }
-    .assistant-message {
-        background: #1e293b;
-        border: 1px solid #334155;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# AI CHATBOT HELPER FUNCTIONS (Using Google Gemini)
-# =============================================================================
-
-import google.generativeai as genai
-
-def get_data_context(returns_df, hourly_df, earnings_df):
-    """
-    Create a comprehensive context string describing all available data
-    for the AI to understand and query.
-    """
-    context_parts = []
-    
-    context_parts.append("=== EARNINGS MOMENTUM STRATEGY DATA OVERVIEW ===\n")
-    context_parts.append("This is a stock trading strategy that buys stocks before earnings announcements.")
-    context_parts.append("The strategy looks for stocks with: earnings this week, SMA20 crossed above SMA50, and Barchart Buy Signal.\n")
-    
-    # Returns tracker data
-    if returns_df is not None and not returns_df.empty:
-        context_parts.append("--- RETURNS TRACKER DATA (returns_tracker.csv) ---")
-        context_parts.append(f"Total trades tracked: {len(returns_df)}")
-        context_parts.append(f"Columns available: {', '.join(returns_df.columns.tolist())}")
-        
-        # Key statistics
-        if '5D Return' in returns_df.columns:
-            avg_5d = returns_df['5D Return'].mean() * 100
-            total_5d = returns_df['5D Return'].sum() * 100
-            win_rate = (returns_df['5D Return'] > 0).mean() * 100
-            context_parts.append(f"5-Day Return Stats: Avg={avg_5d:.2f}%, Total={total_5d:.1f}%, Win Rate={win_rate:.1f}%")
-        
-        if 'EPS Surprise (%)' in returns_df.columns:
-            valid_eps = returns_df['EPS Surprise (%)'].dropna()
-            if len(valid_eps) > 0:
-                context_parts.append(f"EPS Surprise Stats: Avg={valid_eps.mean():.1f}%, trades with data={len(valid_eps)}")
-        
-        if 'Sector' in returns_df.columns:
-            sectors = returns_df['Sector'].dropna().unique().tolist()
-            context_parts.append(f"Sectors covered: {', '.join(sectors[:10])}")
-        
-        # Sample of data structure
-        context_parts.append(f"\nSample data (first 5 rows as JSON):")
-        sample_df = returns_df.head(5).copy()
-        # Convert datetime columns to strings for JSON
-        for col in sample_df.columns:
-            if pd.api.types.is_datetime64_any_dtype(sample_df[col]):
-                sample_df[col] = sample_df[col].astype(str)
-        context_parts.append(sample_df.to_json(orient='records', indent=2))
-        
-        # Full data summary by various dimensions
-        context_parts.append("\n--- FULL DATA DUMP FOR ANALYSIS ---")
-        context_parts.append("Here is ALL the returns data for analysis:")
-        full_data = returns_df.copy()
-        for col in full_data.columns:
-            if pd.api.types.is_datetime64_any_dtype(full_data[col]):
-                full_data[col] = full_data[col].astype(str)
-        # Limit to avoid token limits but provide substantial data
-        if len(full_data) > 200:
-            context_parts.append(f"(Showing first 200 of {len(full_data)} rows)")
-            context_parts.append(full_data.head(200).to_json(orient='records'))
-        else:
-            context_parts.append(full_data.to_json(orient='records'))
-    
-    # Hourly prices data
-    if hourly_df is not None and not hourly_df.empty:
-        context_parts.append("\n--- HOURLY PRICES DATA (hourly_prices.csv) ---")
-        unique_trades = hourly_df.groupby(['Ticker', 'Earnings Date']).ngroups
-        context_parts.append(f"Unique trades with hourly data: {unique_trades}")
-        context_parts.append(f"Total hourly data points: {len(hourly_df)}")
-        context_parts.append(f"Columns: {', '.join(hourly_df.columns.tolist())}")
-        
-        # Aggregate hourly stats
-        if 'Return From Earnings (%)' in hourly_df.columns:
-            max_intraday = hourly_df.groupby(['Ticker', 'Earnings Date'])['Return From Earnings (%)'].max()
-            min_intraday = hourly_df.groupby(['Ticker', 'Earnings Date'])['Return From Earnings (%)'].min()
-            context_parts.append(f"Avg max intraday return: {max_intraday.mean():.2f}%")
-            context_parts.append(f"Avg min intraday return: {min_intraday.mean():.2f}%")
-    
-    # Earnings universe data
-    if earnings_df is not None and not earnings_df.empty:
-        context_parts.append("\n--- EARNINGS UNIVERSE DATA (earnings_universe.csv) ---")
-        context_parts.append(f"Total stocks in universe: {len(earnings_df)}")
-        if 'Date Check' in earnings_df.columns:
-            date_check_counts = earnings_df['Date Check'].value_counts().to_dict()
-            context_parts.append(f"Date Check status: {date_check_counts}")
-    
-    return "\n".join(context_parts)
-
-
-def analyze_data_for_query(query, returns_df, hourly_df, earnings_df):
-    """
-    Pre-analyze data based on common query patterns to provide more specific context.
-    """
-    query_lower = query.lower()
-    analysis_results = []
-    
-    if returns_df is None or returns_df.empty:
-        return "No returns data available for analysis."
-    
-    # Sector-based queries
-    if 'sector' in query_lower or 'healthcare' in query_lower or 'tech' in query_lower or 'financial' in query_lower:
-        if 'Sector' in returns_df.columns:
-            sector_stats = returns_df.groupby('Sector').agg({
-                '5D Return': ['mean', 'sum', 'count'] if '5D Return' in returns_df.columns else [],
-                '1D Return': ['mean', 'sum', 'count'] if '1D Return' in returns_df.columns else []
-            }).round(4)
-            analysis_results.append("SECTOR ANALYSIS:")
-            analysis_results.append(sector_stats.to_string())
-    
-    # EPS Surprise queries
-    if 'eps' in query_lower or 'surprise' in query_lower or 'beat' in query_lower or 'miss' in query_lower:
-        if 'EPS Surprise (%)' in returns_df.columns:
-            # Positive vs negative surprise
-            positive_eps = returns_df[returns_df['EPS Surprise (%)'] > 0]
-            negative_eps = returns_df[returns_df['EPS Surprise (%)'] < 0]
-            
-            analysis_results.append("\nEPS SURPRISE ANALYSIS:")
-            if '5D Return' in returns_df.columns:
-                if len(positive_eps) > 0:
-                    analysis_results.append(f"Positive EPS Surprise (beats): {len(positive_eps)} trades, Avg 5D Return: {positive_eps['5D Return'].mean()*100:.2f}%")
-                if len(negative_eps) > 0:
-                    analysis_results.append(f"Negative EPS Surprise (misses): {len(negative_eps)} trades, Avg 5D Return: {negative_eps['5D Return'].mean()*100:.2f}%")
-    
-    # Return period queries
-    if 'return' in query_lower or 'average' in query_lower or 'performance' in query_lower:
-        return_cols = ['1D Return', '3D Return', '5D Return', '7D Return', '10D Return']
-        available_return_cols = [col for col in return_cols if col in returns_df.columns]
-        if available_return_cols:
-            analysis_results.append("\nRETURN STATISTICS:")
-            for col in available_return_cols:
-                mean_ret = returns_df[col].mean() * 100
-                total_ret = returns_df[col].sum() * 100
-                win_rate = (returns_df[col] > 0).mean() * 100
-                analysis_results.append(f"{col}: Avg={mean_ret:.2f}%, Total={total_ret:.1f}%, Win Rate={win_rate:.1f}%")
-    
-    # Win rate queries
-    if 'win' in query_lower or 'rate' in query_lower or 'success' in query_lower:
-        if '5D Return' in returns_df.columns:
-            overall_win = (returns_df['5D Return'] > 0).mean() * 100
-            analysis_results.append(f"\nOVERALL WIN RATE (5D): {overall_win:.1f}%")
-    
-    # Best/worst queries
-    if 'best' in query_lower or 'worst' in query_lower or 'top' in query_lower or 'bottom' in query_lower:
-        if '5D Return' in returns_df.columns:
-            sorted_df = returns_df.sort_values('5D Return', ascending=False)
-            analysis_results.append("\nTOP 10 BEST PERFORMERS (5D):")
-            top_10 = sorted_df.head(10)[['Ticker', 'Company Name', '5D Return', 'EPS Surprise (%)']].copy()
-            top_10['5D Return'] = top_10['5D Return'] * 100
-            analysis_results.append(top_10.to_string())
-            
-            analysis_results.append("\nTOP 10 WORST PERFORMERS (5D):")
-            bottom_10 = sorted_df.tail(10)[['Ticker', 'Company Name', '5D Return', 'EPS Surprise (%)']].copy()
-            bottom_10['5D Return'] = bottom_10['5D Return'] * 100
-            analysis_results.append(bottom_10.to_string())
-    
-    return "\n".join(analysis_results) if analysis_results else ""
-
-
-def query_gemini(user_query, data_context, additional_analysis, api_key):
-    """
-    Send query to Google Gemini API with data context and get response.
-    """
-    try:
-        genai.configure(api_key=api_key)
-        
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        system_prompt = """You are an expert financial analyst assistant for an Earnings Momentum Trading Strategy application. 
-
-Your role is to help users analyze their trading data and answer questions about:
-- Stock performance after earnings announcements
-- EPS surprises and their impact on returns
-- Sector-specific analysis
-- Win rates, average returns, and other trading metrics
-- Backtesting results and strategy optimization
-
-When answering questions:
-- Be specific and use actual numbers from the data
-- If asked about calculations, show your work
-- Provide actionable insights when possible
-- If data is insufficient to answer a question, say so clearly
-- Format numbers appropriately (percentages with %, currency with $)
-- Be concise and direct
-
-IMPORTANT: All return values in the raw data are in DECIMAL format (e.g., 0.05 = 5%). 
-Convert to percentages when presenting to the user."""
-
-        full_prompt = f"""{system_prompt}
-
-Based on the following data context and analysis, please answer this question:
-
-QUESTION: {user_query}
-
-=== DATA CONTEXT ===
-{data_context}
-
-=== PRE-COMPUTED ANALYSIS ===
-{additional_analysis}
-
-Please provide a clear, data-driven answer."""
-
-        response = model.generate_content(full_prompt)
-        return response.text
-        
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-# =============================================================================
-# HELPER FUNCTIONS (Original)
+# HELPER FUNCTIONS
 # =============================================================================
 
 def parse_earnings_date(earn_str):
@@ -464,7 +241,8 @@ def has_buy_signal(ticker):
         return bool(sig and "Buy" in sig.text)
     except:
         return False
-    
+
+
 # =============================================================================
 # DATE CHECK FUNCTIONS
 # =============================================================================
@@ -786,13 +564,14 @@ def backtest_strategy_legacy(df, stop_loss=None, max_days=5):
     
     return pd.DataFrame(results)
 
+
 # =============================================================================
 # MAIN APP
 # =============================================================================
 
-st.title("📈 Earnings Momentum Strategy")
+st.title("Earnings Momentum Strategy")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis", "Data Analyst"])
+tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis"])
 
 # =============================================================================
 # TAB 1: STOCK SCREENER
@@ -852,61 +631,17 @@ with tab1:
         if not rows:
             st.warning("No tickers match all criteria.")
         else:
-            st.success(f"✅ {len(rows)} tickers ready to trade")
+            st.success(f"{len(rows)} tickers ready to trade")
             st.dataframe(
                 pd.DataFrame(rows)[["Ticker", "Earnings", "Price", "P/E", "Beta", "Market Cap", "Date Check"]],
                 use_container_width=True, hide_index=True
             )
         
         if skipped:
-            with st.expander(f"⚠️ {len(skipped)} tickers skipped (earnings already passed)"):
+            with st.expander(f"{len(skipped)} tickers skipped (earnings already passed)"):
                 st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
     else:
         st.caption("Click Find Stocks to scan.")
-
-# =============================================================================
-# TAB 2: POWERBI
-# =============================================================================
-with tab2:
-    st.markdown("### PowerBI Dashboard")
-    
-    st.markdown(
-        '[Open in Full Screen ↗](https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9)',
-        unsafe_allow_html=True
-    )
-    
-    st.markdown("---")
-    
-    st.markdown("""
-    <style>
-        .powerbi-container {
-            position: relative;
-            width: 100%;
-            padding-bottom: 55.4%;
-            height: 0;
-            overflow: hidden;
-            background: #0f172a;
-            border-radius: 8px;
-            border: 1px solid #334155;
-        }
-        .powerbi-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            border-radius: 8px;
-        }
-    </style>
-    <div class="powerbi-container">
-        <iframe 
-            title="Finance Models"
-            src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
-            allowFullScreen="true">
-        </iframe>
-    </div>
-    """, unsafe_allow_html=True)
 
 # =============================================================================
 # TAB 3: STOP LOSS ANALYSIS
@@ -947,7 +682,7 @@ with tab3:
     
     if has_hourly or has_returns:
         # Data summary
-        st.markdown("### 📊 Data Summary")
+        st.markdown("###  Data Summary")
         col1, col2, col3 = st.columns(3)
         
         if has_hourly:
@@ -963,7 +698,7 @@ with tab3:
         if earnings_df is not None and 'Date Check' in earnings_df.columns:
             date_passed_count = len(earnings_df[earnings_df['Date Check'] == 'DATE PASSED'])
             if date_passed_count > 0:
-                st.caption(f"ℹ️ Filtered out {date_passed_count} tickers with incorrect earnings dates (DATE PASSED)")
+                st.caption(f"Filtered out {date_passed_count} tickers with incorrect earnings dates (DATE PASSED)")
         
         st.markdown("---")
         
@@ -1145,7 +880,7 @@ with tab3:
             max_days = st.session_state['max_days']
             
             st.markdown("---")
-            st.markdown("### 📈 Backtest Results")
+            st.markdown("###  Backtest Results")
             
             # Key Metrics
             total_return = results['Backtest Return'].sum() * 100
@@ -1205,7 +940,7 @@ with tab3:
             
             # Strategy vs Buy & Hold comparison
             if avg_5d_return is not None:
-                st.markdown("### 📊 Strategy vs Buy & Hold (5D)")
+                st.markdown("### Strategy vs Buy & Hold (5D)")
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -1226,14 +961,14 @@ with tab3:
                     st.metric("Avg Diff", f"{avg_diff:+.2f}%", delta_color="normal")
                 
                 if diff_total > 0:
-                    st.success(f"✅ Stop loss strategy **outperformed** buy & hold by {diff_total:+.1f}%")
+                    st.success(f"Stop loss strategy **outperformed** buy & hold by {diff_total:+.1f}%")
                 else:
-                    st.warning(f"⚠️ Stop loss strategy **underperformed** buy & hold by {diff_total:.1f}%")
+                    st.warning(f"Stop loss strategy **underperformed** buy & hold by {diff_total:.1f}%")
             
             st.markdown("---")
             
             # Exit Breakdown
-            st.markdown("### 🚪 Exit Breakdown")
+            st.markdown("### Exit Breakdown")
             
             # Count different exit types
             gap_down_count = results['Gap Down'].sum() if 'Gap Down' in results.columns else 0
@@ -1308,10 +1043,11 @@ with tab3:
                     losers = len(held_trades[held_trades['Backtest Return'] <= 0])
                     st.markdown(f"- Winners: {winners} ({winners/len(held_trades)*100:.0f}%)")
                     st.markdown(f"- Losers: {losers} ({losers/len(held_trades)*100:.0f}%)")
-                    st.markdown("---")
+            
+            st.markdown("---")
             
             # Charts
-            st.markdown("### 📊 Performance Charts")
+            st.markdown("###  Performance Charts")
             
             chart_tab1, chart_tab2, chart_tab3 = st.tabs(["Cumulative Returns", "Return Distribution", "Stop Loss Timing"])
             
@@ -1477,7 +1213,7 @@ with tab3:
             st.markdown("---")
             
             # Full Trade List
-            st.markdown("### 📋 All Trades")
+            st.markdown("###  All Trades")
             
             display_df = results.copy()
             display_df['Earnings Date'] = pd.to_datetime(display_df['Earnings Date']).dt.strftime('%Y-%m-%d')
@@ -1512,7 +1248,7 @@ with tab3:
             # Download button
             csv = results.to_csv(index=False)
             st.download_button(
-                label="📥 Download Results CSV",
+                label="Download Results CSV",
                 data=csv,
                 file_name=f"backtest_results_stop{int(stop_loss*100) if stop_loss else 'none'}_day{max_days}.csv",
                 mime="text/csv"
@@ -1521,7 +1257,7 @@ with tab3:
             st.markdown("---")
             
             # Stop Loss Comparison Tool
-            st.markdown("### 🔄 Compare Stop Loss Levels")
+            st.markdown("### Compare Stop Loss Levels")
             
             if st.button("Run Full Comparison", use_container_width=True):
                 stop_levels = [None, -0.02, -0.03, -0.04, -0.05, -0.06, -0.08, -0.10, -0.15]
@@ -1650,7 +1386,7 @@ with tab3:
 # TAB 4: EARNINGS ANALYSIS
 # =============================================================================
 with tab4:
-    st.subheader("📊 Earnings Surprise Analysis")
+    st.subheader(" Earnings Surprise Analysis")
     st.markdown("Analyze how earnings beats/misses and surprise magnitude affect stock returns")
     
     # Load data
@@ -1672,7 +1408,7 @@ with tab4:
             returns_df = returns_df[returns_df['Date Check'] == 'OK']
             filtered_count = original_count - len(returns_df)
             if filtered_count > 0:
-                st.caption(f"ℹ️ Filtered out {filtered_count} trades with incorrect earnings dates (Date Check != OK)")
+                st.caption(f"Filtered out {filtered_count} trades with incorrect earnings dates (Date Check != OK)")
         
         # Clean up the data
         analysis_df = returns_df.copy()
@@ -1700,7 +1436,7 @@ with tab4:
             missing_surprise = total_trades - valid_surprise
             avg_surprise = analysis_df['EPS Surprise (%)'].mean() if 'EPS Surprise (%)' in analysis_df.columns else 0
             
-            st.success(f"✅ Loaded {total_trades} trades ({valid_surprise} with EPS Surprise data, {missing_surprise} blank)")
+            st.success(f"Loaded {total_trades} trades ({valid_surprise} with EPS Surprise data, {missing_surprise} blank)")
             
             st.markdown("---")
             
@@ -1831,9 +1567,9 @@ with tab4:
                                 """)
                                 
                                 if diff > 0:
-                                    st.success("✅ Beats outperform misses")
+                                    st.success("Beats outperform misses")
                                 else:
-                                    st.warning("⚠️ Misses outperform beats (unusual)")
+                                    st.warning("Misses outperform beats (unusual)")
                         
                         # Additional: Simple Beat vs Miss
                         st.markdown("---")
@@ -1909,7 +1645,7 @@ with tab4:
                         ((analysis_df['EPS Surprise (%)'] < -100) | (analysis_df['EPS Surprise (%)'] > 100))
                     ]
                     if len(outliers) > 0:
-                        st.caption(f"ℹ️ Note: {len(outliers)} outliers with EPS Surprise outside -100% to 100% range excluded from chart")
+                        st.caption(f"Note: {len(outliers)} outliers with EPS Surprise outside -100% to 100% range excluded from chart")
                     
                     if len(scatter_df) > 5:
                         col1, col2 = st.columns([2, 1])
@@ -1995,11 +1731,11 @@ with tab4:
                             """)
                             
                             if abs(t_stat) > 1.96:
-                                st.success("✅ Statistically significant (|t| > 1.96)")
+                                st.success("Statistically significant (|t| > 1.96)")
                             elif abs(t_stat) > 1.65:
-                                st.info("ℹ️ Marginally significant")
+                                st.info("Marginally significant")
                             else:
-                                st.warning("⚠️ Not significant")
+                                st.warning("Not significant")
                         
                         # Surprise buckets analysis
                         st.markdown("---")
@@ -2135,7 +1871,7 @@ with tab4:
                     # Download
                     csv = display_data.to_csv(index=False)
                     st.download_button(
-                        label="📥 Download Filtered Data",
+                        label="Download Filtered Data",
                         data=csv,
                         file_name="earnings_analysis_data.csv",
                         mime="text/csv"
@@ -2152,163 +1888,50 @@ with tab4:
                 if key_cols:
                     summary = analysis_df[key_cols].describe().T
                     st.dataframe(summary.round(2), use_container_width=True)
-# =============================================================================
-# TAB 5: DATA ANALYST
-# =============================================================================
-with tab5:
-    # API Key from Streamlit secrets
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
-    
-    # Load all data for AI context
-    ai_returns_df = load_returns_data()
-    ai_hourly_df = load_hourly_prices()
-    ai_earnings_df = load_earnings_universe()
-    
-    # Initialize chat history in session state
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-    
-    # Chat container with custom styling
-    st.markdown("""
-    <style>
-        .chat-container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        .message-user {
-            background: #1e3a5f;
-            border-radius: 12px 12px 4px 12px;
-            padding: 12px 16px;
-            margin: 8px 0;
-            margin-left: 20%;
-            color: #f1f5f9;
-        }
-        .message-assistant {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 12px 12px 12px 4px;
-            padding: 12px 16px;
-            margin: 8px 0;
-            margin-right: 20%;
-            color: #e2e8f0;
-        }
-        .message-label {
-            font-size: 0.7rem;
-            color: #64748b;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .message-content {
-            font-size: 0.95rem;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-        .chat-input-container {
-            position: sticky;
-            bottom: 0;
-            background: #0f172a;
-            padding: 16px 0;
-            border-top: 1px solid #334155;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Check if API key is configured
-    if not GEMINI_API_KEY:
-        st.warning("API key not configured. Please add GEMINI_API_KEY to Streamlit secrets.")
-    else:
-        # Display chat history
-        chat_display = st.container()
-        with chat_display:
-            if not st.session_state.chat_history:
-                st.markdown("""
-                <div style="text-align: center; color: #64748b; padding: 60px 20px;">
-                    <div style="font-size: 1.1rem; margin-bottom: 8px;">Ask me anything about your earnings data</div>
-                    <div style="font-size: 0.85rem;">I can analyze returns, compare sectors, calculate win rates, and more</div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                for message in st.session_state.chat_history:
-                    if message['role'] == 'user':
-                        st.markdown(f"""
-                        <div class="message-user">
-                            <div class="message-label">You</div>
-                            <div class="message-content">{message['content']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                        <div class="message-assistant">
-                            <div class="message-label">Analyst</div>
-                            <div class="message-content">{message['content']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-        
-        # Spacer
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Input area
-        col1, col2 = st.columns([6, 1])
-        
-        with col1:
-            user_question = st.text_input(
-                "Message",
-                placeholder="Ask a question...",
-                key="user_question_input",
-                label_visibility="collapsed"
-            )
-        
-        with col2:
-            send_button = st.button("Send", type="primary", use_container_width=True)
-        
-        # Clear chat button (smaller, secondary)
-        if st.session_state.chat_history:
-            if st.button("Clear conversation", type="secondary"):
-                st.session_state.chat_history = []
-                st.rerun()
-        
-        # Process question
-        if send_button and user_question:
-            if ai_returns_df is None or ai_returns_df.empty:
-                st.error("No data available. Please ensure the data files are accessible.")
-            else:
-                # Add user message to history
-                st.session_state.chat_history.append({
-                    'role': 'user',
-                    'content': user_question
-                })
-                
-                with st.spinner(""):
-                    # Get data context
-                    data_context = get_data_context(ai_returns_df, ai_hourly_df, ai_earnings_df)
-                    
-                    # Pre-analyze based on query
-                    additional_analysis = analyze_data_for_query(
-                        user_question, 
-                        ai_returns_df, 
-                        ai_hourly_df, 
-                        ai_earnings_df
-                    )
-                    
-                    # Query Gemini
-                    response = query_gemini(
-                        user_question,
-                        data_context,
-                        additional_analysis,
-                        GEMINI_API_KEY
-                    )
-                    
-                    # Add assistant response to history
-                    st.session_state.chat_history.append({
-                        'role': 'assistant',
-                        'content': response
-                    })
-                
-                st.rerun()
 
 # =============================================================================
-# FOOTER
+# TAB 2: POWERBI
 # =============================================================================
+with tab2:
+    st.markdown("### PowerBI Dashboard")
+    
+    st.markdown(
+        '[Open in Full Screen ↗](https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9)',
+        unsafe_allow_html=True
+    )
+    
+    st.markdown("---")
+    
+    st.markdown("""
+    <style>
+        .powerbi-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 55.4%;
+            height: 0;
+            overflow: hidden;
+            background: #0f172a;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .powerbi-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+        }
+    </style>
+    <div class="powerbi-container">
+        <iframe 
+            title="Finance Models"
+            src="https://app.powerbi.com/view?r=eyJrIjoiZWRlNGNjYTgtODNhYy00MjBjLThhMjctMzgyNmYzNzIwZGRiIiwidCI6IjhkMWE2OWVjLTAzYjUtNDM0NS1hZTIxLWRhZDExMmY1ZmI0ZiIsImMiOjN9" 
+            allowFullScreen="true">
+        </iframe>
+    </div>
+    """, unsafe_allow_html=True)
+
 st.markdown("---")
 st.caption("Earnings Momentum Strategy")
