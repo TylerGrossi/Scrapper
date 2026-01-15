@@ -507,15 +507,18 @@ hourly_df = all_data['hourly']
 filter_stats = all_data['filter_stats']
 
 def get_this_week_earnings(returns_df):
-    """Get tickers from returns_tracker that had earnings this week."""
+    """Get tickers from returns_tracker that had earnings this week (Sunday to Saturday)."""
     if returns_df is None or returns_df.empty:
         return pd.DataFrame()
     
-    # Define this week's date range (Monday to Sunday)
+    # Earnings week runs Sunday to Saturday
     today = datetime.today()
-    days_since_monday = today.weekday()
-    week_start = today - timedelta(days=days_since_monday)
+    # weekday(): Monday=0, Sunday=6
+    # We want to find the most recent Sunday
+    days_since_sunday = (today.weekday() + 1) % 7  # Sunday=0, Monday=1, ..., Saturday=6
+    week_start = today - timedelta(days=days_since_sunday)
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    # End on Saturday
     week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
     
     # Filter returns_df for earnings this week
