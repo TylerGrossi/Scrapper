@@ -506,9 +506,12 @@ returns_df = all_data['returns']
 hourly_df = all_data['hourly']
 filter_stats = all_data['filter_stats']
 
-def get_this_week_earnings(returns_df):
+# Also load raw returns data for "This Week" display (includes stocks without 5D return yet)
+raw_returns_df = load_returns_data_raw()
+
+def get_this_week_earnings(df):
     """Get tickers from returns_tracker that had earnings this week (Sunday to Saturday)."""
-    if returns_df is None or returns_df.empty:
+    if df is None or df.empty:
         return pd.DataFrame()
     
     # Earnings week runs Sunday to Saturday
@@ -521,10 +524,10 @@ def get_this_week_earnings(returns_df):
     # End on Saturday
     week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
     
-    # Filter returns_df for earnings this week
-    this_week_df = returns_df[
-        (returns_df['Earnings Date'] >= week_start) & 
-        (returns_df['Earnings Date'] <= week_end)
+    # Filter for earnings this week
+    this_week_df = df[
+        (df['Earnings Date'] >= week_start) & 
+        (df['Earnings Date'] <= week_end)
     ].copy()
     
     return this_week_df
@@ -539,7 +542,8 @@ with tab1:
     st.markdown("### 📊 This Week's Reported Earnings")
     st.caption("Tickers from returns tracker with earnings this week (already reported)")
     
-    this_week_df = get_this_week_earnings(returns_df)
+    # Use RAW data so we include stocks that don't have 5D return yet
+    this_week_df = get_this_week_earnings(raw_returns_df)
     
     if not this_week_df.empty:
         # Select relevant columns to display
