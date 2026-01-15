@@ -604,22 +604,51 @@ with tab1:
         
         st.info(f"{len(barchart_passed)} tickers passed Barchart filter. Checking earnings dates...")
         
+        # Get list of tickers already in returns tracker (ones we caught)
+        tracked_tickers = set()
+        if raw_returns_df is not None and not raw_returns_df.empty:
+            tracked_tickers = set(raw_returns_df['Ticker'].unique())
+        
         rows = []
         skipped = []
         progress = st.progress(0)
         status_text = st.empty()
+        today = datetime.today().date()
         
         for i, t in enumerate(barchart_passed):
             status_text.text(f"Checking dates: {t}")
             data = get_finviz_data(t)
             date_info = get_date_check(t)
             
+            # Parse the earnings date from Finviz
+            earnings_date = None
+            earnings_str = data.get("Earnings", "")
+            if earnings_str and earnings_str != "N/A":
+                try:
+                    # Parse "Jan 13 BMO" or "Jan 14 AMC" format
+                    parts = earnings_str.split()
+                    if len(parts) >= 2:
+                        month_day = f"{parts[0]} {parts[1]}"
+                        earnings_date = datetime.strptime(f"{month_day} {today.year}", "%b %d %Y").date()
+                except:
+                    pass
+            
+            # Skip conditions
+            skip_reason = None
+            
             if date_info["Date Check"] == "DATE PASSED":
+                skip_reason = "DATE PASSED"
+            elif earnings_date and earnings_date < today and t not in tracked_tickers:
+                # Earnings already happened but we didn't catch it - skip
+                skip_reason = "MISSED (earnings passed, not in tracker)"
+            
+            if skip_reason:
                 skipped.append({
                     "Ticker": t,
+                    "Earnings": earnings_str,
                     "Finviz Date": date_info["Earnings Date (Finviz)"],
                     "yfinance Date": date_info["Earnings Date (yfinance)"],
-                    "Reason": "DATE PASSED"
+                    "Reason": skip_reason
                 })
             else:
                 data["Date Check"] = date_info["Date Check"]
@@ -642,7 +671,7 @@ with tab1:
             )
         
         if skipped:
-            with st.expander(f"{len(skipped)} tickers skipped (earnings already passed)"):
+            with st.expander(f"{len(skipped)} tickers skipped"):
                 st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
     else:
         st.caption("Click Find Stocks to scan for upcoming earnings.")
