@@ -229,28 +229,8 @@ def earnings_sort_key(row):
 
 
 # =============================================================================
-# DATA LOADING FUNCTIONS - CENTRALIZED WITH CONSISTENT FILTERING
+# DATA LOADING FUNCTIONS - USING RETURNS_TRACKER ONLY
 # =============================================================================
-
-@st.cache_data(ttl=3600)
-def load_earnings_universe():
-    """Load earnings universe to get Date Check info."""
-    urls = [
-        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/main/earnings_universe.csv",
-        "https://raw.githubusercontent.com/TylerGrossi/Scrapper/master/earnings_universe.csv",
-    ]
-    for url in urls:
-        try:
-            df = pd.read_csv(url)
-            if not df.empty and 'Date Check' in df.columns:
-                return df
-        except:
-            continue
-    try:
-        df = pd.read_csv('earnings_universe.csv')
-        return df
-    except:
-        return None
 
 @st.cache_data(ttl=3600)
 def load_returns_data_raw():
@@ -300,16 +280,10 @@ def load_hourly_prices_raw():
     except:
         return None
 
-def get_date_passed_tickers(earnings_df):
-    """Get list of tickers with DATE PASSED status from earnings_universe."""
-    if earnings_df is None or 'Date Check' not in earnings_df.columns:
-        return []
-    return earnings_df[earnings_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist()
-
-def apply_consistent_filtering(returns_df, hourly_df, earnings_df):
+def apply_consistent_filtering(returns_df, hourly_df):
     """
     Apply consistent filtering across all datasets:
-    1. Remove tickers where Date Check = 'DATE PASSED' (from earnings_universe)
+    1. Remove tickers where Date Check = 'DATE PASSED' (from returns_tracker)
     2. Only include tickers with valid 5D Return data
     
     Returns filtered dataframes and filter statistics.
@@ -324,8 +298,11 @@ def apply_consistent_filtering(returns_df, hourly_df, earnings_df):
         'final_tickers': []
     }
     
-    # Get DATE PASSED tickers from earnings_universe
-    date_passed_tickers = get_date_passed_tickers(earnings_df)
+    # Get DATE PASSED tickers from returns_tracker itself
+    date_passed_tickers = []
+    if returns_df is not None and 'Date Check' in returns_df.columns:
+        date_passed_tickers = returns_df[returns_df['Date Check'] == 'DATE PASSED']['Ticker'].tolist()
+    
     filter_stats['date_passed_tickers'] = date_passed_tickers
     filter_stats['date_passed_count'] = len(date_passed_tickers)
     
@@ -373,16 +350,14 @@ def apply_consistent_filtering(returns_df, hourly_df, earnings_df):
 @st.cache_data(ttl=3600)
 def load_and_filter_all_data():
     """Load and filter all data with consistent filtering."""
-    earnings_df = load_earnings_universe()
     returns_df = load_returns_data_raw()
     hourly_df = load_hourly_prices_raw()
     
     filtered_returns, filtered_hourly, filter_stats = apply_consistent_filtering(
-        returns_df, hourly_df, earnings_df
+        returns_df, hourly_df
     )
     
     return {
-        'earnings_universe': earnings_df,
         'returns': filtered_returns,
         'hourly': filtered_hourly,
         'filter_stats': filter_stats
@@ -529,7 +504,6 @@ st.title("Earnings Momentum Strategy")
 all_data = load_and_filter_all_data()
 returns_df = all_data['returns']
 hourly_df = all_data['hourly']
-earnings_df = all_data['earnings_universe']
 filter_stats = all_data['filter_stats']
 
 def get_this_week_earnings(returns_df):
@@ -537,19 +511,12 @@ def get_this_week_earnings(returns_df):
     if returns_df is None or returns_df.empty:
         return pd.DataFrame()
     
-    # Define this week's date range (Saturday to Friday, or adjust as needed)
+    # Define this week's date range (Monday to Sunday)
     today = datetime.today()
-    # Find the start of the week (Monday)
     days_since_monday = today.weekday()
     week_start = today - timedelta(days=days_since_monday)
     week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-    # End of week (Sunday)
     week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
-    
-    # For the specific week Jan 11-17, 2025:
-    # Using the current date logic but can be hardcoded if needed
-    # week_start = datetime(2025, 1, 11)
-    # week_end = datetime(2025, 1, 17, 23, 59, 59)
     
     # Filter returns_df for earnings this week
     this_week_df = returns_df[
