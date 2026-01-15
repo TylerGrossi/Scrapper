@@ -532,24 +532,32 @@ hourly_df = all_data['hourly']
 earnings_df = all_data['earnings_universe']
 filter_stats = all_data['filter_stats']
 
-# Display global filter info in sidebar
-with st.sidebar:
-    st.markdown("### Data Filtering")
-    st.markdown(f"""
-    **Consistent Filters Applied:**
-    - Date Check ≠ DATE PASSED
-    - Has valid 5D Return
+def get_this_week_earnings(returns_df):
+    """Get tickers from returns_tracker that had earnings this week."""
+    if returns_df is None or returns_df.empty:
+        return pd.DataFrame()
     
-    **Results:**
-    - Original trades: {filter_stats['original_returns_count']}
-    - DATE PASSED removed: {filter_stats['date_passed_count']}
-    - No 5D Return removed: {filter_stats['no_5d_return_count']}
-    - **Final trades: {filter_stats['final_count']}**
-    """)
+    # Define this week's date range (Saturday to Friday, or adjust as needed)
+    today = datetime.today()
+    # Find the start of the week (Monday)
+    days_since_monday = today.weekday()
+    week_start = today - timedelta(days=days_since_monday)
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    # End of week (Sunday)
+    week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
     
-    if filter_stats['date_passed_tickers']:
-        with st.expander(f"DATE PASSED Tickers ({len(filter_stats['date_passed_tickers'])})"):
-            st.write(", ".join(filter_stats['date_passed_tickers']))
+    # For the specific week Jan 11-17, 2025:
+    # Using the current date logic but can be hardcoded if needed
+    # week_start = datetime(2025, 1, 11)
+    # week_end = datetime(2025, 1, 17, 23, 59, 59)
+    
+    # Filter returns_df for earnings this week
+    this_week_df = returns_df[
+        (returns_df['Earnings Date'] >= week_start) & 
+        (returns_df['Earnings Date'] <= week_end)
+    ].copy()
+    
+    return this_week_df
 
 tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analysis", "Earnings Analysis"])
 
@@ -557,6 +565,48 @@ tab1, tab2, tab3, tab4 = st.tabs(["Stock Screener", "PowerBI", "Stop Loss Analys
 # TAB 1: STOCK SCREENER
 # =============================================================================
 with tab1:
+    # First, show tickers from returns_tracker that had earnings this week
+    st.markdown("### 📊 This Week's Reported Earnings")
+    st.caption("Tickers from returns tracker with earnings this week (already reported)")
+    
+    this_week_df = get_this_week_earnings(returns_df)
+    
+    if not this_week_df.empty:
+        # Select relevant columns to display
+        display_cols = ['Ticker', 'Company Name', 'Earnings Date', 'Earnings Timing', 
+                       '1D Return', '5D Return', 'EPS Surprise (%)']
+        display_cols = [c for c in display_cols if c in this_week_df.columns]
+        
+        display_this_week = this_week_df[display_cols].copy()
+        display_this_week = display_this_week.sort_values('Earnings Date', ascending=False)
+        
+        # Format the earnings date for display
+        if 'Earnings Date' in display_this_week.columns:
+            display_this_week['Earnings Date'] = pd.to_datetime(display_this_week['Earnings Date']).dt.strftime('%Y-%m-%d')
+        
+        # Format returns as percentages
+        for col in ['1D Return', '5D Return']:
+            if col in display_this_week.columns:
+                display_this_week[col] = display_this_week[col] * 100
+        
+        st.success(f"{len(display_this_week)} tickers reported earnings this week")
+        st.dataframe(
+            display_this_week,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "1D Return": st.column_config.NumberColumn("1D Return", format="%+.2f%%"),
+                "5D Return": st.column_config.NumberColumn("5D Return", format="%+.2f%%"),
+                "EPS Surprise (%)": st.column_config.NumberColumn("EPS Surprise", format="%+.1f%%"),
+            }
+        )
+    else:
+        st.info("No earnings from this week found in returns tracker yet.")
+    
+    st.markdown("---")
+    
+    # Live scanner section
+    st.markdown("### 🔍 Live Stock Scanner")
     st.markdown("**Criteria:** Earnings this week · SMA20 crossed above SMA50 · Barchart Buy Signal")
     
     if st.button("Find Stocks"):
@@ -621,7 +671,7 @@ with tab1:
             with st.expander(f"{len(skipped)} tickers skipped (earnings already passed)"):
                 st.dataframe(pd.DataFrame(skipped), use_container_width=True, hide_index=True)
     else:
-        st.caption("Click Find Stocks to scan.")
+        st.caption("Click Find Stocks to scan for upcoming earnings.")
 
 # =============================================================================
 # TAB 2: POWERBI
@@ -707,8 +757,6 @@ with tab3:
                 st.metric("Hourly Data Points", f"{len(hourly_df):,}")
             else:
                 st.metric("Data Source", "Returns Tracker")
-        
-        st.caption(f"Filtered out {filter_stats['date_passed_count']} tickers with DATE PASSED | {filter_stats['no_5d_return_count']} without 5D Return")
         
         st.markdown("---")
         
@@ -1093,10 +1141,6 @@ with tab4:
         missing_surprise = total_trades - valid_surprise
         avg_surprise = analysis_df['EPS Surprise (%)'].mean() if 'EPS Surprise (%)' in analysis_df.columns else 0
         
-        st.success(f"Using {total_trades} trades (same as other tabs) | {valid_surprise} with EPS Surprise data, {missing_surprise} without")
-        
-        st.caption(f"Filters applied: DATE PASSED removed ({filter_stats['date_passed_count']}) | No 5D Return removed ({filter_stats['no_5d_return_count']})")
-        
         st.markdown("---")
         
         # Quick Stats - SAME NUMBERS AS OTHER TABS
@@ -1120,7 +1164,6 @@ with tab4:
         
         with analysis_tab1:
             st.markdown("#### Beat vs Miss Performance")
-            st.caption(f"Analysis based on {valid_surprise} trades with EPS Surprise data (out of {total_trades} total)")
             
             if 'EPS Surprise (%)' in analysis_df.columns and valid_surprise > 0:
                 def classify_surprise(x):
@@ -1276,7 +1319,6 @@ with tab4:
         
         with analysis_tab2:
             st.markdown("#### Surprise Magnitude vs Returns")
-            st.caption(f"Analysis based on {valid_surprise} trades with EPS Surprise data (out of {total_trades} total)")
             
             if 'EPS Surprise (%)' in analysis_df.columns:
                 scatter_df = analysis_df[
