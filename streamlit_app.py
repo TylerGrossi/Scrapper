@@ -19,31 +19,21 @@ setup_page()
 apply_styling()
 
 # ------------------------------------
-# MAIN APP
-# ------------------------------------
-st.title("Earnings Momentum Strategy")
-
-# ------------------------------------
 # LOAD DATA
 # ------------------------------------
 # Load filtered data for analysis tabs
-try:
-    all_data = load_and_filter_all_data()
-    returns_df = all_data['returns']
-    hourly_df = all_data['hourly']
-    filter_stats = all_data['filter_stats']
-except Exception as e:
-    st.error(f"Error loading filtered data: {e}")
-    returns_df = None
-    hourly_df = None
-    filter_stats = {'final_count': 0, 'final_tickers': []}
+all_data = load_and_filter_all_data()
+returns_df = all_data['returns']
+hourly_df = all_data['hourly']
+filter_stats = all_data['filter_stats']
 
 # Load raw data for stock screener (includes stocks without 5D return)
-try:
-    raw_returns_df = load_returns_data_raw()
-except Exception as e:
-    st.error(f"Error loading raw data: {e}")
-    raw_returns_df = None
+raw_returns_df = load_returns_data_raw()
+
+# ------------------------------------
+# MAIN APP
+# ------------------------------------
+st.title("Earnings Momentum Strategy")
 
 # Create tabs
 tab1, tab2, tab3, tab4 = st.tabs([
