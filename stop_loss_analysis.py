@@ -186,7 +186,7 @@ def render_stop_loss_tab(returns_df, hourly_df, filter_stats):
         st.markdown("---")
         
         # Parameters
-        st.markdown("### ⚙️ Backtest Parameters")
+        st.markdown("### Backtest Parameters")
         col1, col2, col3 = st.columns(3)
         
         with col1:

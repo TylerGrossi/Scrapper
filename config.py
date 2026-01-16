@@ -21,6 +21,18 @@ def apply_styling():
             padding: 2rem 3rem;
         }
         
+        /* Hide anchor links on headings */
+        .stMarkdown a[href^="#"],
+        a.headerlink,
+        .header-link,
+        [data-testid="StyledLinkIconContainer"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+            display: none !important;
+        }
+        
         /* Clean typography */
         h1, h2, h3 { font-weight: 600; }
         h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }

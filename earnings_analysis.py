@@ -37,7 +37,15 @@ def render_earnings_analysis_tab(returns_df, filter_stats):
         total_trades = len(analysis_df)
         valid_surprise = analysis_df['EPS Surprise (%)'].notna().sum() if 'EPS Surprise (%)' in analysis_df.columns else 0
         missing_surprise = total_trades - valid_surprise
-        avg_surprise = analysis_df['EPS Surprise (%)'].mean() if 'EPS Surprise (%)' in analysis_df.columns else 0
+        
+        # Calculate beat rate and median surprise
+        if 'EPS Surprise (%)' in analysis_df.columns:
+            surprise_data = analysis_df['EPS Surprise (%)'].dropna()
+            beat_rate = (surprise_data > 0).mean() * 100 if len(surprise_data) > 0 else 0
+            median_surprise = surprise_data.median() if len(surprise_data) > 0 else 0
+        else:
+            beat_rate = 0
+            median_surprise = 0
         
         st.markdown("---")
         
@@ -49,9 +57,9 @@ def render_earnings_analysis_tab(returns_df, filter_stats):
         with col2:
             st.metric("With Surprise Data", valid_surprise)
         with col3:
-            st.metric("Avg EPS Surprise", f"{avg_surprise:.1f}%" if pd.notna(avg_surprise) else "N/A")
+            st.metric("Beat Rate", f"{beat_rate:.1f}%")
         with col4:
-            st.metric("Return Column", return_col)
+            st.metric("Median EPS Surprise", f"{median_surprise:+.1f}%" if pd.notna(median_surprise) else "N/A")
         
         st.markdown("---")
         
@@ -72,292 +80,135 @@ def render_earnings_analysis_tab(returns_df, filter_stats):
 
 def _render_beat_vs_miss(analysis_df, return_col, valid_surprise, total_trades):
     """Render Beat vs Miss analysis."""
-    st.markdown("#### Beat vs Miss Performance")
+    st.markdown("#### Returns by Surprise Buckets")
     
-    if 'EPS Surprise (%)' in analysis_df.columns and valid_surprise > 0:
-        def classify_surprise(x):
-            if pd.isna(x):
-                return 'Unknown'
-            elif x > 5:
-                return 'Strong Beat (>5%)'
-            elif x > 0:
-                return 'Beat (0-5%)'
-            elif x > -5:
-                return 'Miss (0 to -5%)'
-            else:
-                return 'Strong Miss (<-5%)'
-        
-        analysis_df['Surprise Category'] = analysis_df['EPS Surprise (%)'].apply(classify_surprise)
-        known_df = analysis_df[analysis_df['Surprise Category'] != 'Unknown']
-        
-        if len(known_df) > 0:
-            category_stats = known_df.groupby('Surprise Category').agg({
-                return_col: ['sum', 'mean', 'median', 'count', 'std'],
-            }).round(2)
-            category_stats.columns = ['Total Return', 'Avg Return', 'Median Return', 'Count', 'Std Dev']
-            category_stats['Win Rate'] = known_df.groupby('Surprise Category')[return_col].apply(
-                lambda x: (x > 0).mean() * 100
-            ).round(1)
-            category_stats = category_stats.reset_index()
-            
-            order = ['Strong Beat (>5%)', 'Beat (0-5%)', 'Miss (0 to -5%)', 'Strong Miss (<-5%)']
-            category_stats['sort_order'] = category_stats['Surprise Category'].apply(
-                lambda x: order.index(x) if x in order else 99
-            )
-            category_stats = category_stats.sort_values('sort_order').drop(columns=['sort_order'])
-            
-            col1, col2 = st.columns([1.5, 1])
-            
-            with col1:
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=category_stats['Surprise Category'],
-                    y=category_stats['Avg Return'],
-                    marker_color='#3b82f6',
-                    text=category_stats['Avg Return'].apply(lambda x: f"{x:+.2f}%"),
-                    textposition='outside'
-                ))
-                
-                y_min = category_stats['Avg Return'].min()
-                y_max = category_stats['Avg Return'].max()
-                y_padding = (y_max - y_min) * 0.2 if y_max != y_min else 5
-                
-                fig.update_layout(
-                    title="Average Return by Earnings Surprise Category",
-                    xaxis_title="Surprise Category",
-                    yaxis_title=f"Avg {return_col} (%)",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#94a3b8',
-                    height=400,
-                    yaxis=dict(range=[min(y_min - y_padding, -2), max(y_max + y_padding, 2)]),
-                    margin=dict(t=50, b=50)
-                )
-                fig.add_hline(y=0, line_dash="dash", line_color="#475569")
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                st.markdown("**Performance by Category**")
-                st.dataframe(
-                    category_stats,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Total Return": st.column_config.NumberColumn(format="%.1f%%"),
-                        "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Median Return": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
-                        "Std Dev": st.column_config.NumberColumn(format="%.2f"),
-                    }
-                )
-                
-                beats = category_stats[category_stats['Surprise Category'].str.contains('Beat', na=False)]
-                misses = category_stats[category_stats['Surprise Category'].str.contains('Miss', na=False)]
-                
-                if len(beats) > 0 and len(misses) > 0:
-                    beat_avg = (beats['Avg Return'] * beats['Count']).sum() / beats['Count'].sum()
-                    beat_total = beats['Total Return'].sum()
-                    miss_avg = (misses['Avg Return'] * misses['Count']).sum() / misses['Count'].sum()
-                    miss_total = misses['Total Return'].sum()
-                    diff = beat_avg - miss_avg
-                    
-                    st.markdown("---")
-                    st.markdown(f"""
-                    **Key Insight:**
-                    - Beats: **{beat_avg:+.2f}%** avg, **{beat_total:+.1f}%** total
-                    - Misses: **{miss_avg:+.2f}%** avg, **{miss_total:+.1f}%** total
-                    - Spread: **{diff:+.2f}%**
-                    """)
-                    
-                    if diff > 0:
-                        st.success("Beats outperform misses")
-                    else:
-                        st.warning("Misses outperform beats (unusual)")
-            
-            # Simple Beat vs Miss
-            st.markdown("---")
-            st.markdown("#### Simple Beat vs Miss (Any Amount)")
-            
-            simple_df = known_df.copy()
-            simple_df['Beat/Miss'] = simple_df['EPS Surprise (%)'].apply(
-                lambda x: 'Beat' if x > 0 else 'Miss'
-            )
-            
-            simple_stats = simple_df.groupby('Beat/Miss').agg({
-                return_col: ['sum', 'mean', 'median', 'count'],
-                'EPS Surprise (%)': 'mean'
-            }).round(2)
-            simple_stats.columns = ['Total Return', 'Avg Return', 'Median Return', 'Count', 'Avg Surprise %']
-            simple_stats['Win Rate'] = simple_df.groupby('Beat/Miss')[return_col].apply(
-                lambda x: (x > 0).mean() * 100
-            ).round(1)
-            simple_stats = simple_stats.reset_index()
-            
-            col1, col2, col3 = st.columns(3)
-            
-            beat_row = simple_stats[simple_stats['Beat/Miss'] == 'Beat']
-            miss_row = simple_stats[simple_stats['Beat/Miss'] == 'Miss']
-            
-            with col1:
-                if len(beat_row) > 0:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-green">{beat_row['Total Return'].values[0]:+.1f}%</div>
-                        <div class="metric-label">Beat Total Return ({int(beat_row['Count'].values[0])} trades)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            with col2:
-                if len(miss_row) > 0:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-red">{miss_row['Total Return'].values[0]:+.1f}%</div>
-                        <div class="metric-label">Miss Total Return ({int(miss_row['Count'].values[0])} trades)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            with col3:
-                if len(beat_row) > 0 and len(miss_row) > 0:
-                    spread = beat_row['Avg Return'].values[0] - miss_row['Avg Return'].values[0]
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-value metric-blue">{spread:+.2f}%</div>
-                        <div class="metric-label">Beat - Miss Avg Spread</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-    else:
+    if 'EPS Surprise (%)' not in analysis_df.columns or valid_surprise == 0:
         st.warning("No 'EPS Surprise (%)' column found in data.")
-
-
-def _render_surprise_magnitude(analysis_df, return_col, valid_surprise, total_trades):
-    """Render Surprise Magnitude analysis."""
-    st.markdown("#### Surprise Magnitude vs Returns")
+        return
     
-    if 'EPS Surprise (%)' in analysis_df.columns:
-        scatter_df = analysis_df[
-            analysis_df['EPS Surprise (%)'].notna() & 
-            analysis_df[return_col].notna() &
-            (analysis_df['EPS Surprise (%)'] >= -100) &
-            (analysis_df['EPS Surprise (%)'] <= 100)
-        ].copy()
+    # Filter for valid data
+    scatter_df = analysis_df[
+        analysis_df['EPS Surprise (%)'].notna() & 
+        analysis_df[return_col].notna() &
+        (analysis_df['EPS Surprise (%)'] >= -100) &
+        (analysis_df['EPS Surprise (%)'] <= 100)
+    ].copy()
+    
+    if len(scatter_df) < 5:
+        st.warning("Not enough data for analysis.")
+        return
+    
+    # Define bucket ranges for drilldown
+    bucket_ranges = {
+        '< -10%': (-100, -10),
+        '-10% to -5%': (-10, -5),
+        '-5% to 0%': (-5, 0),
+        '0% to 5%': (0, 5),
+        '5% to 10%': (5, 10),
+        '10% to 20%': (10, 20),
+        '> 20%': (20, 100)
+    }
+    
+    # Create surprise buckets
+    def bucket_surprise(x):
+        if pd.isna(x):
+            return None
+        elif x < -10:
+            return '< -10%'
+        elif x < -5:
+            return '-10% to -5%'
+        elif x < 0:
+            return '-5% to 0%'
+        elif x < 5:
+            return '0% to 5%'
+        elif x < 10:
+            return '5% to 10%'
+        elif x < 20:
+            return '10% to 20%'
+        else:
+            return '> 20%'
+    
+    scatter_df['Surprise Bucket'] = scatter_df['EPS Surprise (%)'].apply(bucket_surprise)
+    
+    # Calculate IQR stats per bucket
+    def calc_iqr_mean(group):
+        q1 = group.quantile(0.25)
+        q3 = group.quantile(0.75)
+        iqr_data = group[(group >= q1) & (group <= q3)]
+        return iqr_data.mean() if len(iqr_data) > 0 else group.mean()
+    
+    # Calculate 2σ average (excluding outliers beyond 2 std devs)
+    def calc_2sigma_mean(group):
+        mean = group.mean()
+        std = group.std()
+        if pd.isna(std) or std == 0:
+            return mean
+        filtered = group[(group >= mean - 2 * std) & (group <= mean + 2 * std)]
+        return filtered.mean() if len(filtered) > 0 else mean
+    
+    # Session state for drilldown
+    if 'drilldown_bucket' not in st.session_state:
+        st.session_state.drilldown_bucket = None
+    
+    col1, col2 = st.columns([1.5, 1])
+    
+    with col1:
+        # Dropdowns side by side
+        dropdown_col1, dropdown_col2 = st.columns(2)
         
-        outliers = analysis_df[
-            analysis_df['EPS Surprise (%)'].notna() & 
-            ((analysis_df['EPS Surprise (%)'] < -100) | (analysis_df['EPS Surprise (%)'] > 100))
-        ]
-        if len(outliers) > 0:
-            st.caption(f"Note: {len(outliers)} outliers with EPS Surprise outside -100% to 100% range excluded from chart")
+        with dropdown_col1:
+            metric_type = st.selectbox("Display metric:", ["Median", "Average", "Average (excl. 2σ outliers)", "IQR Mean (25th-75th)", "Total"], index=0)
         
-        if len(scatter_df) > 5:
-            col1, col2 = st.columns([2, 1])
+        with dropdown_col2:
+            selected_bucket = st.selectbox("Drill down into:", ["All Buckets"] + list(bucket_ranges.keys()), index=0)
+        
+        if selected_bucket != "All Buckets":
+            # Drilldown view - 1% increments
+            low, high = bucket_ranges[selected_bucket]
+            drilldown_df = scatter_df[
+                (scatter_df['EPS Surprise (%)'] >= low) & 
+                (scatter_df['EPS Surprise (%)'] < high)
+            ].copy()
             
-            x = scatter_df['EPS Surprise (%)'].values
-            y = scatter_df[return_col].values
-            n = len(x)
-            x_mean, y_mean = np.mean(x), np.mean(y)
-            slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
-            intercept = y_mean - slope * x_mean
+            # Create 1% buckets
+            def one_pct_bucket(x):
+                floor_val = int(np.floor(x))
+                return f"{floor_val}% to {floor_val+1}%"
             
-            y_pred = slope * x + intercept
-            ss_res = np.sum((y - y_pred) ** 2)
-            ss_tot = np.sum((y - y_mean) ** 2)
-            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+            drilldown_df['Detail Bucket'] = drilldown_df['EPS Surprise (%)'].apply(one_pct_bucket)
             
-            se = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
-            se_slope = se / np.sqrt(np.sum((x - x_mean) ** 2)) if np.sum((x - x_mean) ** 2) > 0 else 0
-            t_stat = slope / se_slope if se_slope > 0 else 0
-            
-            with col1:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=scatter_df['EPS Surprise (%)'],
-                    y=scatter_df[return_col],
-                    mode='markers',
-                    marker=dict(size=10, opacity=0.7, color='#3b82f6'),
-                    text=scatter_df['Ticker'],
-                    hovertemplate='<b>%{text}</b><br>EPS Surprise: %{x:.1f}%<br>Return: %{y:.1f}%<extra></extra>',
-                    name='Trades'
-                ))
+            if len(drilldown_df) > 0:
+                detail_stats = drilldown_df.groupby('Detail Bucket').agg({
+                    return_col: ['sum', 'mean', 'median', 'count'],
+                }).round(2)
+                detail_stats.columns = ['Total Return', 'Avg Return', 'Median', 'Count']
+                detail_stats['IQR Mean'] = drilldown_df.groupby('Detail Bucket')[return_col].apply(calc_iqr_mean).round(2)
+                detail_stats['Avg (2σ)'] = drilldown_df.groupby('Detail Bucket')[return_col].apply(calc_2sigma_mean).round(2)
+                detail_stats['Win Rate'] = drilldown_df.groupby('Detail Bucket')[return_col].apply(
+                    lambda x: (x > 0).mean() * 100
+                ).round(1)
+                detail_stats = detail_stats.reset_index()
                 
-                x_line = np.array([-100, 100])
-                y_line = slope * x_line + intercept
-                fig.add_trace(go.Scatter(
-                    x=x_line,
-                    y=y_line,
-                    mode='lines',
-                    line=dict(color='#f59e0b', width=2, dash='solid'),
-                    name=f'Trend (R²={r_squared:.3f})'
-                ))
-                
-                fig.update_layout(
-                    title="EPS Surprise % vs Stock Return",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#94a3b8',
-                    height=500,
-                    xaxis=dict(range=[-100, 100], title='EPS Surprise (%)'),
-                    yaxis=dict(title=f'{return_col} (%)'),
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                # Sort by the numeric value
+                detail_stats['sort_val'] = detail_stats['Detail Bucket'].apply(
+                    lambda x: int(x.split('%')[0])
                 )
-                fig.add_hline(y=0, line_dash="dash", line_color="#475569")
-                fig.add_vline(x=0, line_dash="dash", line_color="#475569")
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                correlation = scatter_df['EPS Surprise (%)'].corr(scatter_df[return_col])
+                detail_stats = detail_stats.sort_values('sort_val').drop(columns=['sort_val'])
                 
-                st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value metric-blue">{correlation:.3f}</div>
-                    <div class="metric-label">Correlation</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("")
-                
-                st.markdown(f"""
-                **Regression Stats:**
-                - R²: **{r_squared:.3f}**
-                - Slope: **{slope:.4f}**
-                - T-stat: **{t_stat:.2f}**
-                """)
-                
-                if abs(t_stat) > 1.96:
-                    st.success("Statistically significant (|t| > 1.96)")
-                elif abs(t_stat) > 1.65:
-                    st.info("Marginally significant")
-                else:
-                    st.warning("Not significant")
-            
-            # Surprise buckets analysis
-            st.markdown("---")
-            st.markdown("#### Returns by Surprise Buckets")
-            
-            def bucket_surprise(x):
-                if pd.isna(x):
-                    return None
-                elif x < -10:
-                    return '< -10%'
-                elif x < -5:
-                    return '-10% to -5%'
-                elif x < 0:
-                    return '-5% to 0%'
-                elif x < 5:
-                    return '0% to 5%'
-                elif x < 10:
-                    return '5% to 10%'
-                elif x < 20:
-                    return '10% to 20%'
-                else:
-                    return '> 20%'
-            
-            scatter_df['Surprise Bucket'] = scatter_df['EPS Surprise (%)'].apply(bucket_surprise)
-            
+                display_stats = detail_stats
+                x_col = 'Detail Bucket'
+                chart_title_prefix = f"Drilldown: {selected_bucket}"
+            else:
+                st.warning("No data in this bucket.")
+                return
+        else:
+            # Main view - original buckets
             bucket_stats = scatter_df.groupby('Surprise Bucket').agg({
                 return_col: ['sum', 'mean', 'median', 'count'],
             }).round(2)
             bucket_stats.columns = ['Total Return', 'Avg Return', 'Median', 'Count']
+            bucket_stats['IQR Mean'] = scatter_df.groupby('Surprise Bucket')[return_col].apply(calc_iqr_mean).round(2)
+            bucket_stats['Avg (2σ)'] = scatter_df.groupby('Surprise Bucket')[return_col].apply(calc_2sigma_mean).round(2)
             bucket_stats['Win Rate'] = scatter_df.groupby('Surprise Bucket')[return_col].apply(
                 lambda x: (x > 0).mean() * 100
             ).round(1)
@@ -369,50 +220,230 @@ def _render_surprise_magnitude(analysis_df, return_col, valid_surprise, total_tr
             )
             bucket_stats = bucket_stats.sort_values('sort_order').drop(columns=['sort_order'])
             
-            col1, col2 = st.columns([1.5, 1])
-            
-            with col1:
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=bucket_stats['Surprise Bucket'],
-                    y=bucket_stats['Avg Return'],
-                    marker_color='#3b82f6',
-                    text=bucket_stats['Avg Return'].apply(lambda x: f"{x:+.2f}%"),
-                    textposition='outside'
-                ))
-                
-                y_min = bucket_stats['Avg Return'].min()
-                y_max = bucket_stats['Avg Return'].max()
-                y_padding = (y_max - y_min) * 0.2 if y_max != y_min else 5
-                
-                fig.update_layout(
-                    title="Average Return by EPS Surprise Bucket",
-                    xaxis_title="EPS Surprise %",
-                    yaxis_title=f"Avg {return_col} (%)",
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#94a3b8',
-                    height=400,
-                    yaxis=dict(range=[min(y_min - y_padding, -2), max(y_max + y_padding, 2)]),
-                    margin=dict(t=50, b=50)
-                )
-                fig.add_hline(y=0, line_dash="dash", line_color="#475569")
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                st.dataframe(
-                    bucket_stats, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "Total Return": st.column_config.NumberColumn(format="%.1f%%"),
-                        "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Median": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
-                    }
-                )
-    else:
+            display_stats = bucket_stats
+            x_col = 'Surprise Bucket'
+            chart_title_prefix = ""
+        
+        # Choose which column to display based on dropdown
+        if metric_type == "Average":
+            display_col = 'Avg Return'
+            metric_label = "Average"
+        elif metric_type == "Median":
+            display_col = 'Median'
+            metric_label = "Median"
+        elif metric_type == "Total":
+            display_col = 'Total Return'
+            metric_label = "Total"
+        elif metric_type == "Average (excl. 2σ outliers)":
+            display_col = 'Avg (2σ)'
+            metric_label = "Avg (2σ)"
+        else:
+            display_col = 'IQR Mean'
+            metric_label = "IQR Mean"
+        
+        chart_title = f"{chart_title_prefix} {metric_label} Return by EPS Surprise Bucket".strip()
+        y_label = f"{metric_label} {return_col} (%)"
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=display_stats[x_col],
+            y=display_stats[display_col],
+            marker_color='#3b82f6',
+            text=display_stats[display_col].apply(lambda x: f"{x:+.2f}%"),
+            textposition='outside'
+        ))
+        
+        y_min = display_stats[display_col].min()
+        y_max = display_stats[display_col].max()
+        y_padding = (y_max - y_min) * 0.2 if y_max != y_min else 5
+        
+        fig.update_layout(
+            title=chart_title,
+            xaxis_title="EPS Surprise %",
+            yaxis_title=y_label,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font_color='#94a3b8',
+            height=400,
+            yaxis=dict(range=[min(y_min - y_padding, -2), max(y_max + y_padding, 2)]),
+            margin=dict(t=50, b=50)
+        )
+        fig.add_hline(y=0, line_dash="dash", line_color="#475569")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.dataframe(
+            display_stats, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "Total Return": st.column_config.NumberColumn(format="%.1f%%"),
+                "Avg Return": st.column_config.NumberColumn(format="%.2f%%"),
+                "Median": st.column_config.NumberColumn(format="%.2f%%"),
+                "IQR Mean": st.column_config.NumberColumn(format="%.2f%%"),
+                "Avg (2σ)": st.column_config.NumberColumn(format="%.2f%%"),
+                "Win Rate": st.column_config.NumberColumn(format="%.1f%%"),
+            }
+        )
+    
+    # Simple Beat vs Miss summary
+    st.markdown("---")
+    st.markdown("#### Simple Beat vs Miss (Any Amount)")
+    
+    known_df = analysis_df[analysis_df['EPS Surprise (%)'].notna()].copy()
+    known_df['Beat/Miss'] = known_df['EPS Surprise (%)'].apply(
+        lambda x: 'Beat' if x > 0 else 'Miss'
+    )
+    
+    simple_stats = known_df.groupby('Beat/Miss').agg({
+        return_col: ['sum', 'mean', 'median', 'count'],
+        'EPS Surprise (%)': 'mean'
+    }).round(2)
+    simple_stats.columns = ['Total Return', 'Avg Return', 'Median Return', 'Count', 'Avg Surprise %']
+    simple_stats['Win Rate'] = known_df.groupby('Beat/Miss')[return_col].apply(
+        lambda x: (x > 0).mean() * 100
+    ).round(1)
+    simple_stats = simple_stats.reset_index()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    beat_row = simple_stats[simple_stats['Beat/Miss'] == 'Beat']
+    miss_row = simple_stats[simple_stats['Beat/Miss'] == 'Miss']
+    
+    with col1:
+        if len(beat_row) > 0:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value metric-green">{beat_row['Total Return'].values[0]:+.1f}%</div>
+                <div class="metric-label">Beat Total Return ({int(beat_row['Count'].values[0])} trades)</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col2:
+        if len(miss_row) > 0:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value metric-red">{miss_row['Total Return'].values[0]:+.1f}%</div>
+                <div class="metric-label">Miss Total Return ({int(miss_row['Count'].values[0])} trades)</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col3:
+        if len(beat_row) > 0 and len(miss_row) > 0:
+            spread = beat_row['Avg Return'].values[0] - miss_row['Avg Return'].values[0]
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value metric-blue">{spread:+.2f}%</div>
+                <div class="metric-label">Beat - Miss Avg Spread</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+
+def _render_surprise_magnitude(analysis_df, return_col, valid_surprise, total_trades):
+    """Render Surprise Magnitude analysis - scatter plot with regression."""
+    st.markdown("#### Surprise Magnitude vs Returns")
+    
+    if 'EPS Surprise (%)' not in analysis_df.columns:
         st.warning("No EPS Surprise data available for magnitude analysis.")
+        return
+    
+    scatter_df = analysis_df[
+        analysis_df['EPS Surprise (%)'].notna() & 
+        analysis_df[return_col].notna() &
+        (analysis_df['EPS Surprise (%)'] >= -100) &
+        (analysis_df['EPS Surprise (%)'] <= 100)
+    ].copy()
+    
+    outliers = analysis_df[
+        analysis_df['EPS Surprise (%)'].notna() & 
+        ((analysis_df['EPS Surprise (%)'] < -100) | (analysis_df['EPS Surprise (%)'] > 100))
+    ]
+    if len(outliers) > 0:
+        st.caption(f"Note: {len(outliers)} outliers with EPS Surprise outside -100% to 100% range excluded from chart")
+    
+    if len(scatter_df) > 5:
+        col1, col2 = st.columns([2, 1])
+        
+        x = scatter_df['EPS Surprise (%)'].values
+        y = scatter_df[return_col].values
+        n = len(x)
+        x_mean, y_mean = np.mean(x), np.mean(y)
+        slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
+        intercept = y_mean - slope * x_mean
+        
+        y_pred = slope * x + intercept
+        ss_res = np.sum((y - y_pred) ** 2)
+        ss_tot = np.sum((y - y_mean) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        
+        se = np.sqrt(ss_res / (n - 2)) if n > 2 else 0
+        se_slope = se / np.sqrt(np.sum((x - x_mean) ** 2)) if np.sum((x - x_mean) ** 2) > 0 else 0
+        t_stat = slope / se_slope if se_slope > 0 else 0
+        
+        with col1:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=scatter_df['EPS Surprise (%)'],
+                y=scatter_df[return_col],
+                mode='markers',
+                marker=dict(size=10, opacity=0.7, color='#3b82f6'),
+                text=scatter_df['Ticker'],
+                hovertemplate='<b>%{text}</b><br>EPS Surprise: %{x:.1f}%<br>Return: %{y:.1f}%<extra></extra>',
+                name='Trades'
+            ))
+            
+            x_line = np.array([-100, 100])
+            y_line = slope * x_line + intercept
+            fig.add_trace(go.Scatter(
+                x=x_line,
+                y=y_line,
+                mode='lines',
+                line=dict(color='#f59e0b', width=2, dash='solid'),
+                name=f'Trend (R²={r_squared:.3f})'
+            ))
+            
+            fig.update_layout(
+                title="EPS Surprise % vs Stock Return",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color='#94a3b8',
+                height=500,
+                xaxis=dict(range=[-100, 100], title='EPS Surprise (%)'),
+                yaxis=dict(title=f'{return_col} (%)'),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            fig.add_hline(y=0, line_dash="dash", line_color="#475569")
+            fig.add_vline(x=0, line_dash="dash", line_color="#475569")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            correlation = scatter_df['EPS Surprise (%)'].corr(scatter_df[return_col])
+            
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value metric-blue">{correlation:.3f}</div>
+                <div class="metric-label">Correlation</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("")
+            
+            st.markdown(f"""
+            **Regression Stats:**
+            - R²: **{r_squared:.3f}**
+            - Slope: **{slope:.4f}**
+            - T-stat: **{t_stat:.2f}**
+            """)
+            
+            if abs(t_stat) > 1.96:
+                st.success("Statistically significant (|t| > 1.96)")
+            elif abs(t_stat) > 1.65:
+                st.info("Marginally significant")
+            else:
+                st.warning("Not significant")
+    else:
+        st.warning("Not enough data for magnitude analysis.")
 
 
 def _render_raw_data(analysis_df, return_col):
