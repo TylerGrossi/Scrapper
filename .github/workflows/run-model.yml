@@ -2,7 +2,7 @@ name: Run Earnings Momentum Model
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # 13:00 UTC = 8:00 AM Eastern
+    - cron: '0 12 * * *'   # 13:00 UTC = 8:00 AM Eastern
   workflow_dispatch:        # allows manual runs from Actions tab
 
 # ✅ Allow the workflow token to push commits back to the repo
