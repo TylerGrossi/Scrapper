@@ -56,8 +56,6 @@ with tab3:
 with tab4:
     render_earnings_analysis_tab(returns_df, filter_stats)
 
-# ------------------------------------
 # FOOTER
-# ------------------------------------
 st.markdown("---")
 st.caption("Earnings Momentum Strategy")
