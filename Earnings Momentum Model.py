@@ -20,7 +20,7 @@ import time, re, os
 # ------------------------------------
 
 # Output directory
-OUTPUT_DIR = r"C:\Users\Owner\Desktop\Tyler\OneDrive\Projects\Quantitative Finance"
+OUTPUT_DIR = r"C:\Users\Owner\Desktop\Tyler\OneDrive\Projects\Quantitative Finance\Earnings-Momentum-Model"
 
 RETURNS_FILE  = os.path.join(OUTPUT_DIR, "returns_tracker.csv")
 PRICES_FILE   = os.path.join(OUTPUT_DIR, "hourly_prices.csv")
