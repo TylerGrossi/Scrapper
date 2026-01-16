@@ -21,7 +21,7 @@ apply_styling()
 # ------------------------------------
 # MAIN APP - Title first so it shows even if data fails
 # ------------------------------------
-st.markdown("# Earnings Momentum Strategy")
+st.title("Earnings Momentum Strategy")
 
 # ------------------------------------
 # LOAD DATA
